@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Neural Snake — Neuroevolution Lab</title>
+  <title>Neural Snake — Research Lab (Evolution + RL)</title>
   <style>
     :root {
       --bg0: #0a0c10;
@@ -94,8 +94,24 @@
       display: block;
       width: 100%;
       height: auto;
-      image-rendering: pixelated;
+      image-rendering: auto;
     }
+    .canvas-wrap .arena-labels {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 8px;
+      display: flex;
+      justify-content: space-around;
+      pointer-events: none;
+      font-family: var(--font);
+      font-size: 0.65rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+    }
+    .canvas-wrap .arena-labels span strong { color: var(--accent2); font-weight: 600; }
+    #panelEvo label.row.disabled { opacity: 0.45; pointer-events: none; }
     .hud {
       position: absolute;
       left: 10px;
@@ -178,8 +194,8 @@
   <div class="wrap">
     <header>
       <div>
-        <h1>Neural Snake Lab</h1>
-        <p class="tagline">Train snakes in-browser with neuroevolution. Swap FFNN, Elman RNN, or LSTM brains; use a genetic algorithm or an evolution strategy. No backprop — only fitness, populations, and mutation.</p>
+        <h1>Neural Snake Research Lab</h1>
+        <p class="tagline">Population-based neuroevolution <em>and</em> policy-gradient / value-based RL in one canvas: GA, ES, adaptive ES, REINFORCE, A2C, DQN, and a clipped PPO-style update. Organic rendering, human play, and a split-screen duel against the learned champion.</p>
       </div>
     </header>
 
@@ -187,10 +203,15 @@
       <div class="canvas-wrap">
         <canvas id="game" width="640" height="640" aria-label="Snake game"></canvas>
         <div class="hud">
-          <span class="pill">Gen <strong id="hudGen">0</strong></span>
-          <span class="pill">Best fit <strong id="hudBest">0</strong></span>
+          <span class="pill">Mode <strong id="hudMode">Train</strong></span>
+          <span class="pill">Gen / Ep <strong id="hudGen">0</strong></span>
+          <span class="pill">Best <strong id="hudBest">0</strong></span>
           <span class="pill">Mean <strong id="hudMean">0</strong></span>
-          <span class="pill">Champ score <strong id="hudScore">0</strong></span>
+          <span class="pill">Score <strong id="hudScore">0</strong></span>
+        </div>
+        <div class="arena-labels" id="arenaLabels" hidden>
+          <span><strong>You</strong> · WASD / arrows</span>
+          <span><strong>Champion AI</strong> · same sensors</span>
         </div>
       </div>
       <div class="panel">
@@ -200,8 +221,15 @@
     </div>
 
     <aside class="sidebar">
-      <div class="panel">
-        <h2>Evolution</h2>
+      <div class="panel" id="panelEvo">
+        <h2>Learning</h2>
+        <label class="row"><span class="h">Play / view</span>
+          <select id="playMode">
+            <option value="train" selected>Train (watch champion)</option>
+            <option value="human">Human solo (full board)</option>
+            <option value="versus">Human vs champion (split)</option>
+          </select>
+        </label>
         <label class="row"><span class="h">Brain architecture</span>
           <select id="arch">
             <option value="ffnn">Feedforward (24→16→4)</option>
@@ -209,11 +237,27 @@
             <option value="lstm">LSTM (gated memory)</option>
           </select>
         </label>
-        <label class="row"><span class="h">Training algorithm</span>
+        <label class="row"><span class="h">Optimization</span>
           <select id="trainer">
-            <option value="ga">Genetic algorithm (crossover + mutation)</option>
-            <option value="es">Evolution strategy (μ elites, mutate)</option>
+            <optgroup label="Evolution (no gradients)">
+              <option value="ga">Genetic algorithm (crossover + mutation)</option>
+              <option value="es">Evolution strategy (μ elites, mutate)</option>
+              <option value="cma">Adaptive ES (1/5 success rule on σ)</option>
+            </optgroup>
+            <optgroup label="Reinforcement (policy / value gradients)">
+              <option value="reinforce">REINFORCE + baseline</option>
+              <option value="actor_critic">Advantage actor–critic (A2C)</option>
+              <option value="dqn">DQN (replay + target network)</option>
+              <option value="ppo">PPO-style (clipped ratio, rollout)</option>
+            </optgroup>
           </select>
+        </label>
+        <p class="hint" id="rlArchHint" hidden>RL agents use a shared MLP <span class="kbd">24→32→4</span> (policy / Q) plus a scalar baseline or target net where noted.</p>
+        <label class="row" id="rowRlLr"><span class="h">RL learning rate</span>
+          <input type="range" id="rlLr" min="0.00005" max="0.02" step="0.00005" value="0.0025" />
+        </label>
+        <label class="row" id="rowRlEps"><span class="h">RL exploration ε</span>
+          <input type="range" id="rlEps" min="0.02" max="0.65" step="0.01" value="0.28" />
         </label>
         <label class="row"><span class="h">Population</span>
           <select id="popSize">
@@ -244,11 +288,8 @@
       </div>
 
       <div class="panel">
-        <h2>Play & export</h2>
-        <label class="row" style="grid-template-columns: 1fr;">
-          <span class="h"><input type="checkbox" id="humanMode" /> Human play — <span class="kbd">arrows</span> / <span class="kbd">WASD</span></span>
-        </label>
-        <p class="hint">Human mode pauses evolution. Uncheck to resume training. Compare your score to the champion fitness.</p>
+        <h2>Export</h2>
+        <p class="hint">Save / load the champion vector. Evolution saves the flat genome; RL saves the policy (+ target for DQN).</p>
         <div class="btn-row">
           <button type="button" id="btnSave">Save champion JSON</button>
           <label class="file-btn"><input type="file" id="fileLoad" accept="application/json" /> Load genome</label>
@@ -272,6 +313,10 @@
   const INPUT_DIM = 24;
   const HIDDEN = 16;
   const OUTPUT_DIM = 4;
+  const RL_H = 32;
+  const VERSUS_W = 9;
+  const VERSUS_GAP0 = 9;
+  const VERSUS_OFF = 11;
   const DIRS = [
     { x: 0, y: -1 },
     { x: 1, y: 0 },
@@ -518,16 +563,18 @@
     return out;
   }
 
-  function createGame() {
+  function createGame(gw, gh) {
+    gw = gw || GRID_W;
+    gh = gh || GRID_H;
     const snake = [];
-    const cx = Math.floor(GRID_W / 2);
-    const cy = Math.floor(GRID_H / 2);
+    const cx = Math.floor(gw / 2);
+    const cy = Math.floor(gh / 2);
     snake.push({ x: cx, y: cy });
-    snake.push({ x: cx - 1, y: cy });
-    snake.push({ x: cx - 2, y: cy });
+    snake.push({ x: Math.max(0, cx - 1), y: cy });
+    snake.push({ x: Math.max(0, cx - 2), y: cy });
     let dirIdx = 1;
-    const food = { x: cx + 3, y: cy };
-    return { snake, dirIdx, food, score: 0, steps: 0, stepsSinceFood: 0 };
+    const food = { x: Math.min(gw - 1, cx + 3), y: cy };
+    return { snake, dirIdx, food, score: 0, steps: 0, stepsSinceFood: 0, gw, gh };
   }
 
   function randomEmptyCell(snake, gridW, gridH) {
@@ -538,32 +585,35 @@
         const k = y * gridW + x;
         if (!occ.has(k)) opts.push({ x, y });
       }
+    if (!opts.length) return { x: 0, y: 0 };
     return opts[Math.floor(Math.random() * opts.length)];
   }
 
   function stepGame(game, newDirIdx) {
+    const gw = game.gw;
+    const gh = game.gh;
     const head = game.snake[0];
     game.dirIdx = newDirIdx;
     const nx = head.x + DIRS[game.dirIdx].x;
     const ny = head.y + DIRS[game.dirIdx].y;
     game.steps++;
     game.stepsSinceFood++;
-    if (nx < 0 || ny < 0 || nx >= GRID_W || ny >= GRID_H) return false;
-    const key = ny * GRID_W + nx;
+    if (nx < 0 || ny < 0 || nx >= gw || ny >= gh) return false;
+    const key = ny * gw + nx;
     for (let i = 0; i < game.snake.length - 1; i++) {
-      if (game.snake[i].y * GRID_W + game.snake[i].x === key) return false;
+      if (game.snake[i].y * gw + game.snake[i].x === key) return false;
     }
     game.snake.unshift({ x: nx, y: ny });
     if (nx === game.food.x && ny === game.food.y) {
       game.score++;
       game.stepsSinceFood = 0;
-      game.food = randomEmptyCell(game.snake, GRID_W, GRID_H);
+      game.food = randomEmptyCell(game.snake, gw, gh);
     } else game.snake.pop();
     return true;
   }
 
   function runEpisode(arch, genome, maxSteps, onStep) {
-    const game = createGame();
+    const game = createGame(GRID_W, GRID_H);
     const state = makeState(arch);
     resetState(arch, state);
     const input = new Float32Array(INPUT_DIM);
@@ -641,8 +691,6 @@
   let generation = 0;
   let bestIdx = 0;
   let paused = false;
-  let humanMode = false;
-  let humanGame = null;
   let humanDirPending = null;
 
   const historyBest = [];
@@ -656,6 +704,198 @@
   let showcaseState = null;
   let showcaseInput = new Float32Array(INPUT_DIM);
   let showcaseLogits = new Float32Array(OUTPUT_DIM);
+
+  let playMode = "train";
+  let adaptiveSigma = 0.22;
+  let lastGenBest = -Infinity;
+  let versusHuman = null;
+  let versusAi = null;
+  let versusAiState = null;
+  let humanGame = null;
+
+  const RL_OFF_W1 = 0;
+  const RL_OFF_b1 = INPUT_DIM * RL_H;
+  const RL_OFF_Wp = RL_OFF_b1 + RL_H;
+  const RL_OFF_bp = RL_OFF_Wp + RL_H * OUTPUT_DIM;
+  const RL_OFF_Wv = RL_OFF_bp + OUTPUT_DIM;
+  const RL_OFF_bv = RL_OFF_Wv + RL_H;
+  const RL_SIZE_PV = RL_OFF_bv + 1;
+  const RL_SIZE_Q = RL_OFF_bp + OUTPUT_DIM;
+  const RL_SIZE_DQN = RL_SIZE_Q * 2;
+
+  let rlTheta = new Float32Array(Math.max(RL_SIZE_PV, RL_SIZE_DQN));
+  let rlReplay = [];
+  let rlEpisodeReturn = 0;
+  let rlEpisodes = 0;
+
+  function isEvolutionTrainer(t) {
+    return t === "ga" || t === "es" || t === "cma";
+  }
+  function isRLTrainer(t) {
+    return t === "reinforce" || t === "actor_critic" || t === "dqn" || t === "ppo";
+  }
+
+  function initRLWeights() {
+    const scale1 = Math.sqrt(2 / (INPUT_DIM + RL_H));
+    const scale2 = Math.sqrt(2 / (RL_H + OUTPUT_DIM));
+    for (let i = 0; i < INPUT_DIM * RL_H; i++) rlTheta[i] = (Math.random() * 2 - 1) * scale1;
+    for (let i = RL_OFF_b1; i < RL_OFF_Wp; i++) rlTheta[i] = (Math.random() * 2 - 1) * scale1 * 0.1;
+    for (let i = RL_OFF_Wp; i < RL_OFF_bp; i++) rlTheta[i] = (Math.random() * 2 - 1) * scale2;
+    for (let i = RL_OFF_bp; i < RL_OFF_Wv; i++) rlTheta[i] = (Math.random() * 2 - 1) * scale2 * 0.1;
+    for (let i = RL_OFF_Wv; i < RL_SIZE_PV; i++) rlTheta[i] = (Math.random() * 2 - 1) * 0.05;
+    rlTheta.set(rlTheta.subarray(0, RL_SIZE_Q), RL_SIZE_Q);
+    rlReplay.length = 0;
+  }
+
+  function rlForwardPV(theta, x, h, logits, outV) {
+    const W1 = theta.subarray(RL_OFF_W1, RL_OFF_b1);
+    const b1 = theta.subarray(RL_OFF_b1, RL_OFF_Wp);
+    const Wp = theta.subarray(RL_OFF_Wp, RL_OFF_bp);
+    const bp = theta.subarray(RL_OFF_bp, RL_OFF_Wv);
+    const Wv = theta.subarray(RL_OFF_Wv, RL_OFF_bv);
+    const bv = theta[RL_OFF_bv];
+    for (let i = 0; i < RL_H; i++) {
+      let s = b1[i];
+      for (let j = 0; j < INPUT_DIM; j++) s += x[j] * W1[j * RL_H + i];
+      h[i] = tanh(s);
+    }
+    for (let k = 0; k < OUTPUT_DIM; k++) {
+      let s = bp[k];
+      for (let i = 0; i < RL_H; i++) s += h[i] * Wp[i * OUTPUT_DIM + k];
+      logits[k] = s;
+    }
+    let vv = bv;
+    for (let i = 0; i < RL_H; i++) vv += h[i] * Wv[i];
+    outV[0] = vv;
+  }
+
+  function rlForwardQ(theta, x, h, q) {
+    const W1 = theta.subarray(RL_OFF_W1, RL_OFF_b1);
+    const b1 = theta.subarray(RL_OFF_b1, RL_OFF_Wp);
+    const Wq = theta.subarray(RL_OFF_Wp, RL_OFF_bp);
+    const bq = theta.subarray(RL_OFF_bp, RL_OFF_Wv);
+    for (let i = 0; i < RL_H; i++) {
+      let s = b1[i];
+      for (let j = 0; j < INPUT_DIM; j++) s += x[j] * W1[j * RL_H + i];
+      h[i] = tanh(s);
+    }
+    for (let k = 0; k < OUTPUT_DIM; k++) {
+      let s = bq[k];
+      for (let i = 0; i < RL_H; i++) s += h[i] * Wq[i * OUTPUT_DIM + k];
+      q[k] = s;
+    }
+  }
+
+  function maskedSoftmax(logits, valid, probs) {
+    let mx = -1e9;
+    for (let i = 0; i < OUTPUT_DIM; i++) if (valid[i] && logits[i] > mx) mx = logits[i];
+    let sum = 0;
+    for (let i = 0; i < OUTPUT_DIM; i++) {
+      const v = valid[i] ? Math.exp(logits[i] - mx) : 0;
+      probs[i] = v;
+      sum += v;
+    }
+    if (sum < 1e-12) {
+      for (let i = 0; i < OUTPUT_DIM; i++) probs[i] = valid[i] ? 1 / OUTPUT_DIM : 0;
+      sum = 1;
+    }
+    for (let i = 0; i < OUTPUT_DIM; i++) probs[i] /= sum;
+  }
+
+  function sampleDiscrete(probs) {
+    let r = Math.random();
+    for (let i = 0; i < OUTPUT_DIM; i++) {
+      r -= probs[i];
+      if (r <= 0) return i;
+    }
+    return OUTPUT_DIM - 1;
+  }
+
+  function logProbFromProbs(probs, a) {
+    return Math.log(probs[a] + 1e-12);
+  }
+
+  function actionMask(game, bodySet) {
+    const hx = game.snake[0].x;
+    const hy = game.snake[0].y;
+    const di = game.dirIdx;
+    const m = [false, false, false, false];
+    for (let a = 0; a < OUTPUT_DIM; a++) {
+      const nd = (di + a) % OUTPUT_DIM;
+      const nx = hx + DIRS[nd].x;
+      const ny = hy + DIRS[nd].y;
+      if (nx < 0 || ny < 0 || nx >= game.gw || ny >= game.gh) continue;
+      if (bodySet.has(ny * game.gw + nx)) continue;
+      m[a] = true;
+    }
+    if (!m.some(Boolean)) m.fill(true);
+    return m;
+  }
+
+  function rlPickAction(game, theta, x, h, logits, probs, explore) {
+    const bodySet = new Set();
+    for (let i = 1; i < game.snake.length; i++) bodySet.add(game.snake[i].y * game.gw + game.snake[i].x);
+    const valid = actionMask(game, bodySet);
+    if (trainer === "dqn") {
+      rlForwardQ(theta, x, h, logits);
+      for (let i = 0; i < OUTPUT_DIM; i++) if (!valid[i]) logits[i] = -1e8;
+      if (explore && Math.random() < rlEpsilon) {
+        const opts = [];
+        for (let i = 0; i < OUTPUT_DIM; i++) if (valid[i]) opts.push(i);
+        return opts[Math.floor(Math.random() * opts.length)];
+      }
+      let bi = 0;
+      let bv = -1e9;
+      for (let i = 0; i < OUTPUT_DIM; i++) if (valid[i] && logits[i] > bv) {
+        bv = logits[i];
+        bi = i;
+      }
+      return bi;
+    }
+    rlForwardPV(theta, x, h, logits, new Float32Array(1));
+    for (let i = 0; i < OUTPUT_DIM; i++) if (!valid[i]) logits[i] = -1e8;
+    maskedSoftmax(logits, valid, probs);
+    if (explore && Math.random() < rlEpsilon) {
+      const opts = [];
+      for (let i = 0; i < OUTPUT_DIM; i++) if (valid[i]) opts.push(i);
+      return opts[Math.floor(Math.random() * opts.length)];
+    }
+    return sampleDiscrete(probs);
+  }
+
+  function aiActGreedy(game, input, evoGenome, evoState, logits, probs, h) {
+    const bodySet = new Set();
+    for (let i = 1; i < game.snake.length; i++) bodySet.add(game.snake[i].y * game.gw + game.snake[i].x);
+    if (isRLTrainer(trainer)) {
+      if (trainer === "dqn") {
+        const tgt = rlTheta.subarray(RL_SIZE_Q, RL_SIZE_Q + RL_SIZE_Q);
+        rlForwardQ(tgt, input, h, logits);
+        const valid = actionMask(game, bodySet);
+        for (let i = 0; i < OUTPUT_DIM; i++) if (!valid[i]) logits[i] = -1e8;
+        let bi = 0;
+        let bv = -1e9;
+        for (let i = 0; i < OUTPUT_DIM; i++) if (valid[i] && logits[i] > bv) {
+          bv = logits[i];
+          bi = i;
+        }
+        return bi;
+      }
+      const scratchV = new Float32Array(1);
+      rlForwardPV(rlTheta, input, h, logits, scratchV);
+      const valid = actionMask(game, bodySet);
+      for (let i = 0; i < OUTPUT_DIM; i++) if (!valid[i]) logits[i] = -1e8;
+      maskedSoftmax(logits, valid, probs);
+      let bi = 0;
+      let bv = -1e9;
+      for (let i = 0; i < OUTPUT_DIM; i++) if (valid[i] && probs[i] > bv) {
+        bv = probs[i];
+        bi = i;
+      }
+      return bi;
+    }
+    forwardBrain(arch, evoGenome, input, evoState, logits);
+    return argmaxMasked(logits, game.dirIdx, game.snake[0], bodySet, game.gw, game.gh);
+  }
 
   function syncPopulationSize() {
     const n = parseInt(document.getElementById("popSize").value, 10);
@@ -683,16 +923,212 @@
       historyBest.shift();
       historyMean.shift();
     }
+    if (trainer === "cma") {
+      const cur = fitness[bestIdx];
+      if (lastGenBest > -Infinity) {
+        if (cur > lastGenBest + 1e-6) adaptiveSigma = Math.min(0.58, adaptiveSigma * 1.14);
+        else adaptiveSigma = Math.max(0.055, adaptiveSigma * 0.86);
+      }
+      lastGenBest = cur;
+    }
     generation++;
     resetShowcaseFromBest();
   }
 
   function resetShowcaseFromBest() {
-    const g = champion ? champion : population[bestIdx];
-    showcaseGame = createGame();
+    showcaseGame = createGame(GRID_W, GRID_H);
     showcaseState = makeState(arch);
     resetState(arch, showcaseState);
     showcaseT = 0;
+  }
+
+  function pvBackward(theta, x, h, logits, probs, act, adv, verr, lrA, lrC) {
+    for (let i = 0; i < RL_H; i++) theta[RL_OFF_Wv + i] -= lrC * verr * h[i];
+    theta[RL_OFF_bv] -= lrC * verr;
+    const gl = new Float32Array(OUTPUT_DIM);
+    for (let k = 0; k < OUTPUT_DIM; k++) gl[k] = adv * (probs[k] - (k === act ? 1 : 0));
+    for (let k = 0; k < OUTPUT_DIM; k++) {
+      for (let i = 0; i < RL_H; i++) theta[RL_OFF_Wp + i * OUTPUT_DIM + k] += lrA * gl[k] * h[i];
+      theta[RL_OFF_bp + k] += lrA * gl[k];
+    }
+    const dh = new Float32Array(RL_H);
+    for (let j = 0; j < RL_H; j++) {
+      let s = verr * theta[RL_OFF_Wv + j];
+      for (let k = 0; k < OUTPUT_DIM; k++) s += gl[k] * theta[RL_OFF_Wp + j * OUTPUT_DIM + k];
+      dh[j] = s * (1 - h[j] * h[j]);
+    }
+    for (let j = 0; j < INPUT_DIM; j++)
+      for (let i = 0; i < RL_H; i++) theta[RL_OFF_W1 + j * RL_H + i] -= lrA * dh[i] * x[j];
+    for (let i = 0; i < RL_H; i++) theta[RL_OFF_b1 + i] -= lrA * dh[i];
+  }
+
+  function qBackward(theta, x, h, q, act, tdErr, lr) {
+    const dq = tdErr;
+    for (let i = 0; i < RL_H; i++) theta[RL_OFF_Wp + i * OUTPUT_DIM + act] -= lr * dq * h[i];
+    theta[RL_OFF_bp + act] -= lr * dq;
+    const dh = new Float32Array(RL_H);
+    for (let j = 0; j < RL_H; j++) {
+      dh[j] = dq * theta[RL_OFF_Wp + j * OUTPUT_DIM + act] * (1 - h[j] * h[j]);
+    }
+    for (let j = 0; j < INPUT_DIM; j++)
+      for (let i = 0; i < RL_H; i++) theta[RL_OFF_W1 + j * RL_H + i] -= lr * dh[i] * x[j];
+    for (let i = 0; i < RL_H; i++) theta[RL_OFF_b1 + i] -= lr * dh[i];
+  }
+
+  function rlRecordMetric(epReturn) {
+    rlRollingReward = rlRollingReward * 0.92 + epReturn * 0.08;
+    if (epReturn > champFitness) champFitness = epReturn;
+    historyBest.push(epReturn);
+    historyMean.push(rlRollingReward);
+    if (historyBest.length > 200) {
+      historyBest.shift();
+      historyMean.shift();
+    }
+    generation++;
+  }
+
+  function rlRunTrainingBatch(innerSteps) {
+    const lr = parseFloat(document.getElementById("rlLr").value);
+    rlEpsilon = parseFloat(document.getElementById("rlEps").value);
+    const gamma = 0.985;
+    const x = new Float32Array(INPUT_DIM);
+    const x2 = new Float32Array(INPUT_DIM);
+    const h = new Float32Array(RL_H);
+    const h2 = new Float32Array(RL_H);
+    const logits = new Float32Array(OUTPUT_DIM);
+    const logits2 = new Float32Array(OUTPUT_DIM);
+    const probs = new Float32Array(OUTPUT_DIM);
+    const pv = new Float32Array(1);
+    const pv2 = new Float32Array(1);
+    const q2 = new Float32Array(OUTPUT_DIM);
+    let epReturn = 0;
+    let game = createGame(GRID_W, GRID_H);
+    let steps = 0;
+    const maxSteps = GRID_W * GRID_H * 4;
+    const traj = [];
+
+    while (steps < innerSteps && steps < maxSteps * 3) {
+      const bodySet = new Set();
+      for (let i = 1; i < game.snake.length; i++) bodySet.add(game.snake[i].y * game.gw + game.snake[i].x);
+      buildSensors(game.snake, game.food, game.dirIdx, game.gw, game.gh, game.stepsSinceFood, maxSteps).forEach((v, i) => (x[i] = v));
+      const maskBefore = actionMask(game, bodySet);
+      const online = trainer === "dqn" ? rlTheta.subarray(0, RL_SIZE_Q) : rlTheta;
+      const act = rlPickAction(game, online, x, h, logits, probs, true);
+      const prevScore = game.score;
+      let v_before = 0;
+      let logp_old = 0;
+      if (trainer !== "dqn") {
+        rlForwardPV(rlTheta, x, h, logits, pv);
+        maskedSoftmax(logits, maskBefore, probs);
+        v_before = pv[0];
+        if (trainer === "ppo") logp_old = logProbFromProbs(probs, act);
+      } else rlForwardQ(online, x, h, logits);
+      const newDir = (game.dirIdx + act) % OUTPUT_DIM;
+      const alive = stepGame(game, newDir);
+      const ate = game.score > prevScore;
+      const r = (ate ? 1.2 : 0) + (alive ? -0.004 : -0.85);
+      epReturn += r;
+      buildSensors(game.snake, game.food, game.dirIdx, game.gw, game.gh, game.stepsSinceFood, maxSteps).forEach((v, i) => (x2[i] = v));
+      steps++;
+
+      if (trainer === "dqn") {
+        rlForwardQ(online, x, h, logits);
+        const qsa = logits[act];
+        let target = r;
+        if (alive) {
+          rlForwardQ(rlTheta.subarray(RL_SIZE_Q), x2, h2, q2);
+          let mq = -1e9;
+          const bs = new Set();
+          for (let i = 1; i < game.snake.length; i++) bs.add(game.snake[i].y * game.gw + game.snake[i].x);
+          const vm = actionMask(game, bs);
+          for (let k = 0; k < OUTPUT_DIM; k++) if (vm[k] && q2[k] > mq) mq = q2[k];
+          target += gamma * mq;
+        }
+        const td = qsa - target;
+        qBackward(online, x, h, logits, act, td, lr);
+        rlReplay.push({ x: Float32Array.from(x), a: act, r, x2: Float32Array.from(x2), done: !alive });
+        if (rlReplay.length > 6000) rlReplay.shift();
+        if (rlReplay.length >= 500 && steps % 2 === 0) {
+          for (let b = 0; b < 8; b++) {
+            const s = rlReplay[Math.floor(Math.random() * rlReplay.length)];
+            rlForwardQ(online, s.x, h, logits);
+            const qs = logits[s.a];
+            let tgt = s.r;
+            if (!s.done) {
+              rlForwardQ(rlTheta.subarray(RL_SIZE_Q), s.x2, h2, q2);
+              let mq = -1e9;
+              for (let k = 0; k < OUTPUT_DIM; k++) if (q2[k] > mq) mq = q2[k];
+              tgt += gamma * mq;
+            }
+            const tde = qs - tgt;
+            qBackward(online, s.x, h, logits, s.a, tde, lr * 0.85);
+          }
+        }
+        if (steps % 140 === 0) rlTheta.set(rlTheta.subarray(0, RL_SIZE_Q), RL_SIZE_Q);
+      } else if (trainer === "actor_critic") {
+        const bs2 = new Set();
+        for (let i = 1; i < game.snake.length; i++) bs2.add(game.snake[i].y * game.gw + game.snake[i].x);
+        rlForwardPV(rlTheta, x2, h2, logits2, pv2);
+        const tgt = r + (alive ? gamma * pv2[0] : 0);
+        const adv = tgt - v_before;
+        const verr = v_before - tgt;
+        pvBackward(rlTheta, x, h, logits, probs, act, adv, verr, lr * 0.65, lr * 1.05);
+      } else if (trainer === "reinforce") {
+        const mskArr = actionMask(game, bodySet);
+        const mv = new Float32Array(4);
+        for (let k = 0; k < 4; k++) mv[k] = mskArr[k] ? 1 : 0;
+        traj.push({ x: Float32Array.from(x), act, r, m: mv });
+        if (!alive) {
+          let G = 0;
+          const T = traj.length;
+          const returns = new Float32Array(T);
+          for (let i = T - 1; i >= 0; i--) {
+            G = traj[i].r + gamma * G;
+            returns[i] = G;
+          }
+          let b = 0;
+          for (let i = 0; i < T; i++) b += returns[i];
+          b /= Math.max(1, T);
+          for (let i = 0; i < T; i++) {
+            const o = traj[i];
+            rlForwardPV(rlTheta, o.x, h, logits, pv);
+            maskedSoftmax(
+              logits,
+              [o.m[0] > 0.5, o.m[1] > 0.5, o.m[2] > 0.5, o.m[3] > 0.5],
+              probs,
+            );
+            const adv = returns[i] - b;
+            const verr = pv[0] - returns[i];
+            pvBackward(rlTheta, o.x, h, logits, probs, o.act, adv, verr * 0.22, lr * 0.55);
+          }
+          traj.length = 0;
+        }
+      } else if (trainer === "ppo") {
+        rlForwardPV(rlTheta, x2, h2, logits2, pv2);
+        const tgt = r + (alive ? gamma * pv2[0] : 0);
+        const adv = tgt - v_before;
+        rlForwardPV(rlTheta, x, h, logits, pv);
+        maskedSoftmax(logits, maskBefore, probs);
+        const logp_new = logProbFromProbs(probs, act);
+        const ratio = Math.exp(logp_new - logp_old);
+        const epsC = 0.14;
+        const unclipped = ratio * adv;
+        const clipped = Math.max(Math.min(ratio, 1 + epsC), 1 - epsC) * adv;
+        const polAdv = -Math.min(unclipped, clipped);
+        const verr = v_before - tgt;
+        pvBackward(rlTheta, x, h, logits, probs, act, polAdv, verr, lr * 0.45, lr * 0.95);
+      }
+      if (!alive) {
+        rlRecordMetric(epReturn);
+        epReturn = 0;
+        game = createGame(GRID_W, GRID_H);
+      }
+    }
+  }
+
+  function rlTrainingGeneration() {
+    const mult = document.getElementById("turbo").checked ? 14 : 5;
+    rlRunTrainingBatch(GRID_W * GRID_H * mult);
   }
 
   function breedNextGeneration() {
@@ -704,7 +1140,8 @@
 
     for (const i of eliteIdx) next.push(cloneGenome(population[i]));
 
-    const sigma = parseFloat(document.getElementById("mutSigma").value);
+    const sigmaBase = parseFloat(document.getElementById("mutSigma").value);
+    const sigma = trainer === "cma" ? adaptiveSigma : sigmaBase;
     const rate = parseFloat(document.getElementById("mutRate").value);
 
     if (trainer === "ga") {
@@ -727,8 +1164,12 @@
   }
 
   function stepGenerationPipeline() {
-    evaluateAll();
-    breedNextGeneration();
+    if (isRLTrainer(trainer)) {
+      rlTrainingGeneration();
+    } else {
+      evaluateAll();
+      breedNextGeneration();
+    }
     updateHud();
     drawChart();
     drawNetViz();
@@ -736,40 +1177,123 @@
 
   function updateHud() {
     document.getElementById("hudGen").textContent = String(generation);
-    document.getElementById("hudBest").textContent = fitness.length ? fitness[bestIdx].toFixed(1) : "0";
-    const mean = fitness.length ? fitness.reduce((a, b) => a + b, 0) / fitness.length : 0;
+    const bestDisp = isRLTrainer(trainer)
+      ? historyBest.length
+        ? Math.max(...historyBest).toFixed(1)
+        : "0"
+      : fitness.length
+        ? fitness[bestIdx].toFixed(1)
+        : "0";
+    const mean = isRLTrainer(trainer)
+      ? historyMean.length
+        ? historyMean[historyMean.length - 1]
+        : 0
+      : fitness.length
+        ? fitness.reduce((a, b) => a + b, 0) / fitness.length
+        : 0;
+    document.getElementById("hudBest").textContent = bestDisp;
     document.getElementById("hudMean").textContent = mean.toFixed(1);
     document.getElementById("hudScore").textContent = showcaseGame ? String(showcaseGame.score) : "0";
+    const rlExtra = isRLTrainer(trainer)
+      ? `<b>RL weights</b> ${trainer === "dqn" ? RL_SIZE_DQN : RL_SIZE_PV} · <b>EMA return</b> ${rlRollingReward.toFixed(3)}<br/>`
+      : `<b>Genome length</b> ${genomeLength(arch)} floats<br/>`;
     document.getElementById("stats").innerHTML =
-      `<b>Champion fitness (all-time)</b> ${champFitness.toFixed(2)}<br/>` +
-      `<b>Genome length</b> ${genomeLength(arch)} floats<br/>` +
-      `<b>Architecture</b> ${arch.toUpperCase()} · <b>Trainer</b> ${trainer.toUpperCase()}`;
+      `<b>Objective (best / champion)</b> ${isRLTrainer(trainer) ? "episode return" : "fitness"} · ${champFitness > -1e8 ? champFitness.toFixed(2) : "—"}<br/>` +
+      rlExtra +
+      `<b>Representation</b> ${isRLTrainer(trainer) ? "MLP 24→32→4" : arch.toUpperCase()} · <b>Trainer</b> ${trainer.toUpperCase()}`;
+  }
+
+  function syncTrainerPanel() {
+    const rl = isRLTrainer(trainer);
+    document.getElementById("rlArchHint").hidden = !rl;
+    document.getElementById("rowRlLr").style.display = rl ? "" : "none";
+    document.getElementById("rowRlEps").style.display = rl ? "" : "none";
+    document.getElementById("arch").disabled = rl;
+    const evoOnly = ["popSize", "mutSigma", "mutRate"].map((id) => document.getElementById(id).closest("label.row"));
+    evoOnly.forEach((el) => {
+      if (el) el.style.display = rl ? "none" : "";
+    });
+  }
+
+  function drawBoardGrid(maxX, maxY) {
+    for (let x = 0; x <= maxX; x++) {
+      ctx.strokeStyle = "rgba(255,255,255,0.038)";
+      ctx.beginPath();
+      ctx.moveTo(x * CELL, 0);
+      ctx.lineTo(x * CELL, maxY * CELL);
+      ctx.stroke();
+    }
+    for (let y = 0; y <= maxY; y++) {
+      ctx.beginPath();
+      ctx.moveTo(0, y * CELL);
+      ctx.lineTo(maxX * CELL, y * CELL);
+      ctx.stroke();
+    }
+  }
+
+  function drawOrganicSnake(game, colShift, headHex, tailHex) {
+    const snake = game.snake;
+    if (!snake.length) return;
+    ctx.beginPath();
+    const c0 = snake[0];
+    ctx.moveTo((colShift + c0.x + 0.5) * CELL, (c0.y + 0.5) * CELL);
+    for (let i = 1; i < snake.length; i++) {
+      const p = snake[i];
+      ctx.lineTo((colShift + p.x + 0.5) * CELL, (p.y + 0.5) * CELL);
+    }
+    const g = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+    g.addColorStop(0, tailHex);
+    g.addColorStop(1, headHex);
+    ctx.strokeStyle = g;
+    ctx.lineWidth = CELL * 0.5;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.shadowColor = "rgba(0,0,0,0.55)";
+    ctx.shadowBlur = 14;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    const hx = (colShift + snake[0].x + 0.5) * CELL;
+    const hy = (snake[0].y + 0.5) * CELL;
+    ctx.beginPath();
+    ctx.arc(hx, hy, CELL * 0.19, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(255,255,255,0.93)";
+    ctx.fill();
+    ctx.strokeStyle = "rgba(0,0,0,0.38)";
+    ctx.lineWidth = 1.25;
+    ctx.stroke();
+  }
+
+  function drawFoodGlow(fx, fy, colShift, core) {
+    const cx = (colShift + fx + 0.5) * CELL;
+    const cy = (fy + 0.5) * CELL;
+    const rg = ctx.createRadialGradient(cx, cy, 1, cx, cy, CELL * 0.58);
+    rg.addColorStop(0, core);
+    rg.addColorStop(0.45, core + "cc");
+    rg.addColorStop(1, "rgba(255,200,80,0.04)");
+    ctx.fillStyle = rg;
+    ctx.beginPath();
+    ctx.arc(cx, cy, CELL * 0.4, 0, Math.PI * 2);
+    ctx.fill();
   }
 
   function drawGridGame(game) {
-    ctx.fillStyle = "#07090e";
+    ctx.fillStyle = "#05070d";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    for (let x = 0; x <= GRID_W; x++) {
-      ctx.strokeStyle = "rgba(255,255,255,0.04)";
-      ctx.beginPath();
-      ctx.moveTo(x * CELL, 0);
-      ctx.lineTo(x * CELL, GRID_H * CELL);
-      ctx.stroke();
-    }
-    for (let y = 0; y <= GRID_H; y++) {
-      ctx.beginPath();
-      ctx.moveTo(0, y * CELL);
-      ctx.lineTo(GRID_W * CELL, y * CELL);
-      ctx.stroke();
-    }
-    ctx.fillStyle = varFood();
-    ctx.fillRect(game.food.x * CELL + 2, game.food.y * CELL + 2, CELL - 4, CELL - 4);
-    for (let i = game.snake.length - 1; i >= 0; i--) {
-      const p = game.snake[i];
-      const t = i === 0 ? 1 : i / game.snake.length;
-      ctx.fillStyle = i === 0 ? "#6ec4ff" : `rgba(100, 200, 255, ${0.25 + t * 0.45})`;
-      ctx.fillRect(p.x * CELL + 1, p.y * CELL + 1, CELL - 2, CELL - 2);
-    }
+    drawBoardGrid(GRID_W, GRID_H);
+    drawFoodGlow(game.food.x, game.food.y, 0, varFood());
+    drawOrganicSnake(game, 0, "#8ae8ff", "#1c5f9e");
+  }
+
+  function drawVersusScene(hGame, aGame) {
+    ctx.fillStyle = "#05070d";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    drawBoardGrid(GRID_W, GRID_H);
+    ctx.fillStyle = "rgba(0,0,0,0.5)";
+    ctx.fillRect(VERSUS_GAP0 * CELL, 0, 2 * CELL, GRID_H * CELL);
+    drawFoodGlow(hGame.food.x, hGame.food.y, 0, "#7cf5c6");
+    drawOrganicSnake(hGame, 0, "#b8ffe8", "#1f7a55");
+    drawFoodGlow(aGame.food.x, aGame.food.y, VERSUS_OFF, varFood());
+    drawOrganicSnake(aGame, VERSUS_OFF, "#9fd6ff", "#204a8a");
   }
 
   function varFood() {
@@ -839,6 +1363,57 @@
     netCtx.clearRect(0, 0, nw, nh);
     netCtx.fillStyle = "rgba(0,0,0,0.25)";
     netCtx.fillRect(0, 0, nw, nh);
+
+    if (isRLTrainer(trainer)) {
+      const theta = rlTheta;
+      const cols = [INPUT_DIM, RL_H, OUTPUT_DIM];
+      const maxN = Math.max(...cols);
+      const colW = nw / (cols.length + 0.5);
+      const nodes = [];
+      for (let c = 0; c < cols.length; c++) {
+        const count = cols[c];
+        for (let i = 0; i < count; i++) {
+          const x = 0.35 * colW + c * colW;
+          const y = (i + (maxN - count) / 2 + 0.5) * (nh / (maxN + 1));
+          nodes.push({ x, y, c, i });
+        }
+      }
+      function nodeAt(c, i) {
+        return nodes.find((n) => n.c === c && n.i === i);
+      }
+      function strokeWeight(a, b, w) {
+        const mag = Math.min(1, Math.abs(w));
+        const alpha = 0.08 + mag * 0.55;
+        netCtx.strokeStyle = w >= 0 ? `rgba(77,163,255,${alpha})` : `rgba(255,107,138,${alpha})`;
+        netCtx.beginPath();
+        netCtx.moveTo(a.x, a.y);
+        netCtx.lineTo(b.x, b.y);
+        netCtx.stroke();
+      }
+      netCtx.lineWidth = 0.5;
+      for (let j = 0; j < INPUT_DIM; j++)
+        for (let i = 0; i < RL_H; i++) {
+          const w = theta[j * RL_H + i];
+          strokeWeight(nodeAt(0, j), nodeAt(1, i), w);
+        }
+      const offW2 = INPUT_DIM * RL_H + RL_H;
+      for (let i = 0; i < RL_H; i++)
+        for (let k = 0; k < OUTPUT_DIM; k++) {
+          const w = theta[offW2 + i * OUTPUT_DIM + k];
+          strokeWeight(nodeAt(1, i), nodeAt(2, k), w);
+        }
+      for (const n of nodes) {
+        netCtx.beginPath();
+        netCtx.arc(n.x, n.y, 3.2, 0, Math.PI * 2);
+        netCtx.fillStyle = "rgba(200,210,240,0.85)";
+        netCtx.fill();
+      }
+      netCtx.fillStyle = "rgba(255,255,255,0.5)";
+      netCtx.font = "10px sans-serif";
+      netCtx.fillText("Policy MLP (RL)", 8, 14);
+      return;
+    }
+
     if (!g) return;
 
     if (arch === "ffnn") {
@@ -913,27 +1488,21 @@
       return;
     }
     const g = champion || population[bestIdx];
-    const bodySet = new Set();
-    for (let i = 1; i < showcaseGame.snake.length; i++) bodySet.add(showcaseGame.snake[i].y * GRID_W + showcaseGame.snake[i].x);
+    const gw = showcaseGame.gw;
+    const gh = showcaseGame.gh;
     const sens = buildSensors(
       showcaseGame.snake,
       showcaseGame.food,
       showcaseGame.dirIdx,
-      GRID_W,
-      GRID_H,
+      gw,
+      gh,
       showcaseGame.stepsSinceFood,
       maxSteps
     );
     for (let i = 0; i < INPUT_DIM; i++) showcaseInput[i] = sens[i];
-    forwardBrain(arch, g, showcaseInput, showcaseState, showcaseLogits);
-    const act = argmaxMasked(
-      showcaseLogits,
-      showcaseGame.dirIdx,
-      showcaseGame.snake[0],
-      bodySet,
-      GRID_W,
-      GRID_H
-    );
+    const hloc = new Float32Array(RL_H);
+    const probs = new Float32Array(OUTPUT_DIM);
+    const act = aiActGreedy(showcaseGame, showcaseInput, g, showcaseState, showcaseLogits, probs, hloc);
     const newDir = (showcaseGame.dirIdx + act) % 4;
     const alive = stepGame(showcaseGame, newDir);
     showcaseT++;
@@ -941,7 +1510,7 @@
   }
 
   function humanStep() {
-    if (!humanGame) humanGame = createGame();
+    if (!humanGame) humanGame = createGame(GRID_W, GRID_H);
     let nd = humanGame.dirIdx;
     if (humanDirPending !== null) {
       const hx = humanGame.snake[0].x;
@@ -966,9 +1535,59 @@
       humanDirPending = null;
     }
     const alive = stepGame(humanGame, nd);
-    if (!alive) humanGame = createGame();
+    if (!alive) humanGame = createGame(GRID_W, GRID_H);
     drawGridGame(humanGame);
     document.getElementById("hudScore").textContent = String(humanGame.score);
+  }
+
+  function versusStepHuman() {
+    if (!versusHuman) versusHuman = createGame(VERSUS_W, GRID_H);
+    const gw = versusHuman.gw;
+    const gh = versusHuman.gh;
+    let nd = versusHuman.dirIdx;
+    if (humanDirPending !== null) {
+      const hx = versusHuman.snake[0].x;
+      const hy = versusHuman.snake[0].y;
+      const cur = versusHuman.dirIdx;
+      for (const cand of humanDirPending) {
+        const nx = hx + DIRS[cand].x;
+        const ny = hy + DIRS[cand].y;
+        const opp = (cur + 2) % 4;
+        if (cand === opp) continue;
+        if (nx >= 0 && ny >= 0 && nx < gw && ny < gh) {
+          let hit = false;
+          for (let i = 0; i < versusHuman.snake.length - 1; i++) {
+            if (versusHuman.snake[i].x === nx && versusHuman.snake[i].y === ny) hit = true;
+          }
+          if (!hit) {
+            nd = cand;
+            break;
+          }
+        }
+      }
+      humanDirPending = null;
+    }
+    const alive = stepGame(versusHuman, nd);
+    if (!alive) versusHuman = createGame(VERSUS_W, GRID_H);
+  }
+
+  function versusStepAi() {
+    if (!versusAi) versusAi = createGame(VERSUS_W, GRID_H);
+    if (!versusAiState) versusAiState = makeState(arch);
+    const maxSteps = VERSUS_W * GRID_H * 4;
+    const x = new Float32Array(INPUT_DIM);
+    buildSensors(versusAi.snake, versusAi.food, versusAi.dirIdx, versusAi.gw, versusAi.gh, versusAi.stepsSinceFood, maxSteps).forEach((v, i) => (x[i] = v));
+    const g = champion || population[bestIdx];
+    const h = new Float32Array(RL_H);
+    const probs = new Float32Array(OUTPUT_DIM);
+    const locLog = new Float32Array(OUTPUT_DIM);
+    const act = aiActGreedy(versusAi, x, g, versusAiState, locLog, probs, h);
+    const newDir = (versusAi.dirIdx + act) % 4;
+    const alive = stepGame(versusAi, newDir);
+    if (!alive) {
+      versusAi = createGame(VERSUS_W, GRID_H);
+      resetState(arch, versusAiState);
+    }
   }
 
   let lastGenTs = 0;
@@ -979,11 +1598,24 @@
     const turbo = document.getElementById("turbo").checked;
     const speed = parseInt(document.getElementById("simSpeed").value, 10);
 
-    if (humanMode) {
+    if (playMode === "human") {
       const humanInterval = Math.max(55, 220 - speed * 1.5);
       if (ts - lastHumanTs >= humanInterval) {
         lastHumanTs = ts;
         humanStep();
+      }
+      requestAnimationFrame(frame);
+      return;
+    }
+
+    if (playMode === "versus") {
+      const humanInterval = Math.max(55, 200 - speed * 1.4);
+      if (ts - lastHumanTs >= humanInterval) {
+        lastHumanTs = ts;
+        versusStepHuman();
+        versusStepAi();
+        drawVersusScene(versusHuman, versusAi);
+        document.getElementById("hudScore").textContent = `${versusHuman.score} · ${versusAi.score}`;
       }
       requestAnimationFrame(frame);
       return;
@@ -1023,7 +1655,7 @@
   });
 
   document.getElementById("btnStepGen").addEventListener("click", () => {
-    if (humanMode) return;
+    if (playMode !== "train") return;
     stepGenerationPipeline();
     updateHud();
     drawChart();
@@ -1036,12 +1668,18 @@
     champion = null;
     historyBest.length = 0;
     historyMean.length = 0;
-    population = [];
-    syncPopulationSize();
-    for (let i = 0; i < population.length; i++) population[i] = randomGenome(arch);
-    fitness = new Array(population.length).fill(0);
-    evaluateAll();
-    breedNextGeneration();
+    lastGenBest = -Infinity;
+    if (isRLTrainer(trainer)) {
+      initRLWeights();
+    } else {
+      population = [];
+      syncPopulationSize();
+      for (let i = 0; i < population.length; i++) population[i] = randomGenome(arch);
+      fitness = new Array(population.length).fill(0);
+      evaluateAll();
+      breedNextGeneration();
+    }
+    resetShowcaseFromBest();
     updateHud();
     drawChart();
     drawNetViz();
@@ -1068,7 +1706,24 @@
 
   document.getElementById("trainer").addEventListener("change", (e) => {
     trainer = e.target.value;
+    syncTrainerPanel();
+    generation = 0;
+    historyBest.length = 0;
+    historyMean.length = 0;
+    lastGenBest = -Infinity;
+    if (isRLTrainer(trainer)) initRLWeights();
+    else {
+      population = [];
+      syncPopulationSize();
+      for (let i = 0; i < population.length; i++) population[i] = randomGenome(arch);
+      fitness = new Array(population.length).fill(0);
+      evaluateAll();
+      breedNextGeneration();
+    }
+    resetShowcaseFromBest();
     updateHud();
+    drawChart();
+    drawNetViz();
   });
 
   document.getElementById("popSize").addEventListener("change", () => {
@@ -1077,19 +1732,32 @@
     updateHud();
   });
 
-  document.getElementById("humanMode").addEventListener("change", (e) => {
-    humanMode = e.target.checked;
-    paused = humanMode ? true : paused;
+  document.getElementById("playMode").addEventListener("change", (e) => {
+    playMode = e.target.value;
+    document.getElementById("arenaLabels").hidden = playMode !== "versus";
+    document.getElementById("hudMode").textContent =
+      playMode === "train" ? "Train" : playMode === "human" ? "Human" : "Vs AI";
+    paused = playMode === "train" ? false : true;
+    humanGame = null;
+    versusHuman = null;
+    versusAi = null;
+    versusAiState = null;
+    humanDirPending = null;
     document.getElementById("btnToggle").textContent = paused ? "Resume" : "Pause";
-    if (!humanMode) {
-      humanGame = null;
-      resetShowcaseFromBest();
+    if (playMode === "train") resetShowcaseFromBest();
+    if (playMode === "versus") {
+      versusHuman = createGame(VERSUS_W, GRID_H);
+      versusAi = createGame(VERSUS_W, GRID_H);
+      versusAiState = makeState(arch);
+      resetState(arch, versusAiState);
+      drawVersusScene(versusHuman, versusAi);
+      document.getElementById("hudScore").textContent = `${versusHuman.score} · ${versusAi.score}`;
     }
     updateHud();
   });
 
   window.addEventListener("keydown", (e) => {
-    if (!humanMode) return;
+    if (playMode !== "human" && playMode !== "versus") return;
     const k = e.key.toLowerCase();
     const map = {
       arrowup: 0,
@@ -1108,24 +1776,28 @@
   });
 
   document.getElementById("btnSave").addEventListener("click", () => {
-    const g = champion || (population.length ? population[bestIdx] : null);
-    if (!g) return;
-    const blob = new Blob(
-      [
-        JSON.stringify({
-          v: 1,
-          arch,
-          trainer,
-          generation,
-          champFitness,
-          weights: Array.from(g),
-        }),
-      ],
-      { type: "application/json" },
-    );
+    let payload;
+    let name;
+    if (isRLTrainer(trainer)) {
+      const n = trainer === "dqn" ? RL_SIZE_DQN : RL_SIZE_PV;
+      payload = {
+        v: 2,
+        trainer,
+        generation,
+        champFitness,
+        weights: Array.from(rlTheta.subarray(0, n)),
+      };
+      name = `neural-snake-rl-${trainer}.json`;
+    } else {
+      const g = champion || (population.length ? population[bestIdx] : null);
+      if (!g) return;
+      payload = { v: 1, arch, trainer, generation, champFitness, weights: Array.from(g) };
+      name = `neural-snake-champion-${arch}.json`;
+    }
+    const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `neural-snake-champion-${arch}.json`;
+    a.download = name;
     a.click();
     URL.revokeObjectURL(a.href);
   });
@@ -1137,17 +1809,31 @@
     reader.onload = () => {
       try {
         const data = JSON.parse(reader.result);
-        if (!data.weights || !data.arch) throw new Error("bad file");
-        document.getElementById("arch").value = data.arch;
-        arch = data.arch;
-        const arr = new Float32Array(data.weights);
-        if (arr.length !== genomeLength(arch)) throw new Error("length mismatch");
-        champion = arr;
-        champFitness = data.champFitness || champFitness;
-        generation = data.generation || generation;
-        syncPopulationSize();
-        population[0] = cloneGenome(champion);
-        for (let i = 1; i < population.length; i++) population[i] = mutate(champion, 0.25, 0.15);
+        if (!data.weights) throw new Error("bad file");
+        if (data.v === 2 || isRLTrainer(data.trainer)) {
+          document.getElementById("trainer").value = data.trainer || "actor_critic";
+          trainer = document.getElementById("trainer").value;
+          syncTrainerPanel();
+          const arr = new Float32Array(data.weights);
+          const need = trainer === "dqn" ? RL_SIZE_DQN : RL_SIZE_PV;
+          if (arr.length !== need) throw new Error("RL length mismatch");
+          rlTheta.fill(0);
+          rlTheta.set(arr);
+          if (trainer === "dqn") rlTheta.set(rlTheta.subarray(0, RL_SIZE_Q), RL_SIZE_Q);
+          champFitness = data.champFitness ?? champFitness;
+          generation = data.generation ?? generation;
+        } else {
+          document.getElementById("arch").value = data.arch;
+          arch = data.arch;
+          const arr = new Float32Array(data.weights);
+          if (arr.length !== genomeLength(arch)) throw new Error("length mismatch");
+          champion = arr;
+          champFitness = data.champFitness || champFitness;
+          generation = data.generation || generation;
+          syncPopulationSize();
+          population[0] = cloneGenome(champion);
+          for (let i = 1; i < population.length; i++) population[i] = mutate(champion, 0.25, 0.15);
+        }
         resetShowcaseFromBest();
         updateHud();
         drawNetViz();
@@ -1159,11 +1845,24 @@
     ev.target.value = "";
   });
 
-  syncPopulationSize();
-  for (let i = 0; i < population.length; i++) population[i] = randomGenome(arch);
-  evaluateAll();
-  breedNextGeneration();
+  trainer = document.getElementById("trainer").value;
+  playMode = document.getElementById("playMode").value;
+  syncTrainerPanel();
+  initRLWeights();
+  if (isRLTrainer(trainer)) {
+    generation = 0;
+    historyBest.length = 0;
+    historyMean.length = 0;
+  } else {
+    syncPopulationSize();
+    for (let i = 0; i < population.length; i++) population[i] = randomGenome(arch);
+    evaluateAll();
+    breedNextGeneration();
+  }
   resetShowcaseFromBest();
+  document.getElementById("hudMode").textContent =
+    playMode === "train" ? "Train" : playMode === "human" ? "Human" : "Vs AI";
+  document.getElementById("arenaLabels").hidden = playMode !== "versus";
   updateHud();
   drawChart();
   drawNetViz();

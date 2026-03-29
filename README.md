@@ -2,7 +2,7 @@
 
 A self-contained Snake game where each snake is controlled by a neural network trained **live** with **population-based evolution** (no backprop). Switch between **feedforward**, **Elman RNN**, and **LSTM** brains, and between **genetic algorithm** (crossover + mutation) and **evolution strategy** (mutation around elites).
 
-**Live demo:** enable GitHub Pages on this repo (see below) — site URL will be `https://<username>.github.io/neural-snake/`.
+**Live demo:** after you enable Pages (below), the site is typically `https://<username>.github.io/<repo-name>/` (for example `https://pat749.github.io/Neural-Snake/`).
 
 ## Features
 
@@ -24,9 +24,15 @@ python3 -m http.server 8080
 
 ## Deploy on GitHub Pages
 
-1. Create a repo (e.g. `neural-snake`) and push this project to the `main` branch.
-2. In the repository: **Settings → Pages → Build and deployment → Source:** GitHub Actions.
-3. The included workflow (`.github/workflows/pages.yml`) deploys the repository root on every push to `main`.
+1. Push this project to the `main` branch of your GitHub repository.
+2. **Required once per repo:** open **Settings → Pages**. Under **Build and deployment**, set **Source** to **GitHub Actions** (not “Deploy from a branch”). Until this is saved, `actions/configure-pages` fails with **“Get Pages site failed” / Not Found** because GitHub has not created a Pages site for the repository yet.
+3. Go to **Actions**, open the failed **Deploy to GitHub Pages** run, and click **Re-run all jobs** (or push an empty commit). The workflow in `.github/workflows/pages.yml` uploads the repo root on every push to `main`.
+
+### If the deploy job still fails
+
+- Confirm **Settings → Pages → Source** is **GitHub Actions**.
+- Confirm the workflow ran on **`main`** (branch name matches `on.push.branches` in `pages.yml`).
+- For a **private** repository, check [GitHub Docs](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages) for extra permission requirements.
 
 ## Project layout
 
