@@ -3,7 +3,16 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Train Snake agents in your browser with neuroevolution (GA, ES, adaptive σ) and deep RL (A2C, DQN, PPO-style, REINFORCE). One HTML file. No build step. Open science demo." />
+  <meta name="theme-color" content="#0a0c10" />
+  <meta property="og:title" content="Neural Snake Research Lab — Evolution + RL in the Browser" />
+  <meta property="og:description" content="Population-based search meets policy gradients. Watch agents learn in real time. Vanilla JS. GitHub Pages ready." />
+  <meta property="og:type" content="website" />
+  <meta name="twitter:card" content="summary_large_image" />
   <title>Neural Snake — Research Lab (Evolution + RL)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
   <style>
     :root {
       --bg0: #0a0c10;
@@ -19,14 +28,34 @@
       --snake-best: #4da3ff;
       --snake-pop: rgba(124, 245, 198, 0.22);
       --font: "JetBrains Mono", "SF Mono", ui-monospace, monospace;
-      --sans: "Inter", system-ui, sans-serif;
+      --sans: "DM Sans", system-ui, sans-serif;
     }
     *, *::before, *::after { box-sizing: border-box; }
     html, body { height: 100%; margin: 0; background: var(--bg0); color: var(--text); font-family: var(--sans); }
     body {
+      position: relative;
       background: radial-gradient(1200px 800px at 20% 0%, #152038 0%, transparent 55%),
                   radial-gradient(900px 600px at 100% 20%, #0f2830 0%, transparent 50%),
                   var(--bg0);
+    }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: -20%;
+      z-index: -1;
+      background:
+        radial-gradient(ellipse 50% 40% at 70% 10%, rgba(77, 163, 255, 0.09), transparent),
+        radial-gradient(ellipse 40% 35% at 15% 80%, rgba(124, 245, 198, 0.06), transparent);
+      animation: meshDrift 28s ease-in-out infinite alternate;
+      pointer-events: none;
+    }
+    @keyframes meshDrift {
+      0% { transform: translate(0, 0) rotate(0deg); }
+      100% { transform: translate(-2%, 1%) rotate(1.5deg); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      body::before { animation: none; }
+      .modal-card { animation: none; }
     }
     ::view-transition-group(*),
     ::view-transition-old(*),
@@ -47,20 +76,63 @@
     }
     header {
       grid-column: 1 / -1;
+      display: grid;
+      gap: 14px;
+      grid-template-columns: 1fr auto;
+      align-items: start;
+    }
+    @media (max-width: 720px) {
+      header { grid-template-columns: 1fr; }
+    }
+    .header-main { min-width: 0; }
+    h1 {
+      font-size: clamp(1.2rem, 2.5vw, 1.55rem);
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      margin: 0 0 6px;
+      font-family: var(--sans);
+      background: linear-gradient(120deg, #e8f0ff 0%, #a8d4ff 45%, #7cf5c6 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    .byline {
+      margin: 0 0 10px;
+      font-size: 0.78rem;
+      font-family: var(--font);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: rgba(138, 150, 176, 0.95);
+    }
+    .tagline { color: var(--muted); font-size: 0.92rem; max-width: 58ch; line-height: 1.55; margin: 0; }
+    .hero-badges {
       display: flex;
       flex-wrap: wrap;
-      align-items: baseline;
-      justify-content: space-between;
-      gap: 12px;
+      gap: 6px;
+      margin-top: 12px;
     }
-    h1 {
-      font-size: 1.35rem;
-      font-weight: 650;
-      letter-spacing: -0.02em;
-      margin: 0;
+    .hero-badges span {
       font-family: var(--font);
+      font-size: 0.62rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(120, 160, 220, 0.22);
+      background: rgba(255,255,255,0.03);
+      color: var(--muted);
     }
-    .tagline { color: var(--muted); font-size: 0.9rem; max-width: 52ch; line-height: 1.45; }
+    .header-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+    .header-actions button.ghost {
+      font-size: 0.78rem;
+      padding: 8px 12px;
+      background: rgba(255,255,255,0.04);
+    }
     .main {
       display: flex;
       flex-direction: column;
@@ -74,6 +146,11 @@
       padding: 14px 16px;
       backdrop-filter: blur(12px);
       box-shadow: 0 12px 40px rgba(0,0,0,0.35);
+      transition: border-color 0.2s ease, box-shadow 0.25s ease;
+    }
+    .panel:hover {
+      border-color: rgba(120, 160, 220, 0.28);
+      box-shadow: 0 16px 48px rgba(0,0,0,0.4);
     }
     .panel h2 {
       margin: 0 0 10px;
@@ -85,9 +162,15 @@
     }
     .canvas-wrap {
       position: relative;
-      border-radius: 12px;
+      border-radius: 14px;
       overflow: hidden;
-      border: 1px solid var(--border);
+      padding: 1px;
+      background: linear-gradient(135deg, rgba(77,163,255,0.35), rgba(124,245,198,0.12), rgba(77,163,255,0.2));
+      box-shadow: 0 0 0 1px rgba(0,0,0,0.4), 0 20px 50px rgba(0,0,0,0.45);
+    }
+    .canvas-inner {
+      border-radius: 13px;
+      overflow: hidden;
       background: linear-gradient(145deg, #0d1118, #0a0e14);
     }
     #game {
@@ -173,10 +256,10 @@
     .stats b { color: var(--text); }
     #chart {
       width: 100%;
-      height: 120px;
+      height: 148px;
       display: block;
       border-radius: 8px;
-      background: rgba(0,0,0,0.25);
+      background: rgba(0,0,0,0.28);
     }
     #netviz {
       width: 100%;
@@ -188,19 +271,111 @@
     .hint { font-size: 0.75rem; color: var(--muted); margin-top: 8px; line-height: 1.45; }
     input[type="file"] { display: none; }
     .kbd { font-family: var(--font); font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border); }
+    .site-footer {
+      grid-column: 1 / -1;
+      margin-top: 8px;
+      padding: 16px 0 8px;
+      border-top: 1px solid var(--border);
+      font-size: 0.78rem;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+    .site-footer strong { color: var(--text); }
+    .modal-root[hidden] { display: none !important; }
+    .modal-root {
+      position: fixed;
+      inset: 0;
+      z-index: 200;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .modal-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(4, 6, 12, 0.72);
+      backdrop-filter: blur(8px);
+    }
+    .modal-card {
+      position: relative;
+      max-width: 560px;
+      max-height: min(86vh, 640px);
+      overflow: auto;
+      width: 100%;
+      padding: 22px 24px;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      background: rgba(14, 18, 28, 0.96);
+      box-shadow: 0 24px 80px rgba(0,0,0,0.55);
+      animation: modalIn 0.35s cubic-bezier(0.19, 1, 0.22, 1);
+    }
+    @keyframes modalIn {
+      from { opacity: 0; transform: translateY(12px) scale(0.98); }
+      to { opacity: 1; transform: none; }
+    }
+    .modal-card h3 {
+      margin: 0 0 12px;
+      font-size: 1rem;
+      font-weight: 600;
+    }
+    .modal-card section { margin-bottom: 18px; }
+    .modal-card h4 {
+      margin: 0 0 6px;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: var(--accent2);
+    }
+    .modal-card p, .modal-card li {
+      font-size: 0.84rem;
+      line-height: 1.55;
+      color: var(--muted);
+      margin: 0 0 8px;
+    }
+    .modal-card ul { margin: 0; padding-left: 1.1rem; }
+    .modal-card .mono { font-family: var(--font); font-size: 0.78rem; color: #b8c4dc; }
+    .modal-close {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.05);
+      color: var(--text);
+      cursor: pointer;
+      font-size: 1.2rem;
+      line-height: 1;
+    }
+    .modal-close:hover { background: rgba(255,255,255,0.1); }
   </style>
 </head>
 <body>
   <div class="wrap">
     <header>
-      <div>
+      <div class="header-main">
         <h1>Neural Snake Research Lab</h1>
-        <p class="tagline">Population-based neuroevolution <em>and</em> policy-gradient / value-based RL in one canvas: GA, ES, adaptive ES, REINFORCE, A2C, DQN, and a clipped PPO-style update. Organic rendering, human play, and a split-screen duel against the learned champion.</p>
+        <p class="byline">Interactive ML systems demo · single static file · zero build toolchain</p>
+        <p class="tagline">Population-based neuroevolution <em>and</em> policy-gradient / value-based RL in one canvas: GA, ES, adaptive ES, REINFORCE, A2C, DQN, and a clipped PPO-style update. Organic rendering, human play, and a split-screen duel against the learned champion — designed to read like a serious research instrument, not a toy.</p>
+        <div class="hero-badges" aria-hidden="true">
+          <span>Vanilla JS</span>
+          <span>Canvas 2D</span>
+          <span>No frameworks</span>
+          <span>GitHub Pages</span>
+          <span>Open weights export</span>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button type="button" class="ghost" id="btnMethodology">Methodology</button>
+        <button type="button" class="ghost" id="btnShortcuts" title="Keyboard">Shortcuts <span class="kbd">?</span></button>
       </div>
     </header>
 
     <div class="main">
       <div class="canvas-wrap">
+        <div class="canvas-inner">
         <canvas id="game" width="640" height="640" aria-label="Snake game"></canvas>
         <div class="hud">
           <span class="pill">Mode <strong id="hudMode">Train</strong></span>
@@ -213,10 +388,11 @@
           <span><strong>You</strong> · WASD / arrows</span>
           <span><strong>Champion AI</strong> · same sensors</span>
         </div>
+        </div>
       </div>
       <div class="panel">
-        <h2>Fitness over generations</h2>
-        <canvas id="chart" width="800" height="240"></canvas>
+        <h2>Training curve</h2>
+        <canvas id="chart" width="800" height="296"></canvas>
       </div>
     </div>
 
@@ -302,6 +478,48 @@
         <p class="hint">Blue = positive, red = negative. Brightness = magnitude. RNN/LSTM shows input→hidden (first slice) for readability.</p>
       </div>
     </aside>
+
+    <footer class="site-footer">
+      <strong>Why this stands out.</strong> Most “AI Snake” demos stop at a fixed feedforward net + GA. This lab juxtaposes <strong>black-box search</strong> (crossover, ES, adaptive mutation pressure) with <strong>gradient-based control</strong> (actor–critic, replay-based Q-learning, clipped policy updates) on the <em>same</em> observation code — so comparisons are fair. Everything runs client-side: fork it, cite it in a portfolio, or use it in a classroom. Built as one deployable artifact.
+    </footer>
+  </div>
+
+  <div id="modalMethodology" class="modal-root" hidden role="dialog" aria-modal="true" aria-labelledby="methTitle">
+    <div class="modal-backdrop" data-close-modal></div>
+    <div class="modal-card">
+      <button type="button" class="modal-close" data-close-modal aria-label="Close">×</button>
+      <h3 id="methTitle">Methodology &amp; notation</h3>
+      <section>
+        <h4>Observations</h4>
+        <p>The policy never sees the raw grid. It receives normalized ray distances to walls and body, food direction, heading, and auxiliary scalars — encouraging generalization over memorization.</p>
+      </section>
+      <section>
+        <h4>Evolution</h4>
+        <p class="mono">Fitness blends score², survival, and food-distance shaping. GA: tournament selection + crossover + Gaussian mutation. ES: elite parents + mutation-only offspring. Adaptive ES adjusts σ using a 1/5-style success heuristic on generation-to-generation improvement.</p>
+      </section>
+      <section>
+        <h4>Reinforcement</h4>
+        <p class="mono">Shared MLP 24→32→4 (+ value head or target Q-network). A2C: TD(0) advantage with joint policy–value backprop. DQN: experience replay + periodic target sync. PPO-style: clipped importance ratio on on-policy updates. REINFORCE: Monte Carlo returns with a learned baseline.</p>
+      </section>
+      <section>
+        <h4>Integrity</h4>
+        <p>No server, no dataset download, no hidden API keys. What you see training is what runs in your tab — suitable for reproducible demos and open review.</p>
+      </section>
+    </div>
+  </div>
+
+  <div id="modalShortcuts" class="modal-root" hidden role="dialog" aria-modal="true" aria-labelledby="shortTitle">
+    <div class="modal-backdrop" data-close-modal></div>
+    <div class="modal-card">
+      <button type="button" class="modal-close" data-close-modal aria-label="Close">×</button>
+      <h3 id="shortTitle">Shortcuts</h3>
+      <ul>
+        <li><span class="kbd">?</span> — toggle this panel (when not in a text field)</li>
+        <li><span class="kbd">Esc</span> — close any open panel</li>
+        <li>Human / Versus: <span class="kbd">WASD</span> or arrow keys to steer</li>
+      </ul>
+      <p>Tip: switch <strong>Optimization</strong> to compare evolution vs RL without changing the environment.</p>
+    </div>
   </div>
 
   <script>
@@ -1304,23 +1522,41 @@
     const w = chartC.width;
     const h = chartC.height;
     chartCtx.clearRect(0, 0, w, h);
-    chartCtx.fillStyle = "rgba(0,0,0,0.2)";
+    chartCtx.fillStyle = "rgba(6, 10, 18, 0.92)";
     chartCtx.fillRect(0, 0, w, h);
-    if (historyBest.length < 2) return;
+    const padL = 44;
+    const padR = 14;
+    const padT = 22;
+    const padB = 30;
+    const plotW = w - padL - padR;
+    const plotH = h - padT - padB;
+    chartCtx.strokeStyle = "rgba(255,255,255,0.06)";
+    chartCtx.lineWidth = 1;
+    for (let g = 0; g <= 4; g++) {
+      const y = padT + (g / 4) * plotH;
+      chartCtx.beginPath();
+      chartCtx.moveTo(padL, y);
+      chartCtx.lineTo(padL + plotW, y);
+      chartCtx.stroke();
+    }
+    if (historyBest.length < 2) {
+      chartCtx.fillStyle = "rgba(138,150,176,0.7)";
+      chartCtx.font = "11px JetBrains Mono, monospace";
+      chartCtx.fillText("Training… curve appears after 2+ generations / episodes", padL, padT + plotH * 0.45);
+      return;
+    }
     const maxF = Math.max(...historyBest, 1);
     const minF = Math.min(...historyMean, ...historyBest, 0);
-    const pad = 8;
-    const plotW = w - pad * 2;
-    const plotH = h - pad * 2;
     const n = historyBest.length;
     function xAt(i) {
-      return pad + (i / (n - 1)) * plotW;
+      return padL + (i / (n - 1)) * plotW;
     }
     function yAt(v) {
-      return pad + plotH - ((v - minF) / (maxF - minF + 1e-6)) * plotH;
+      return padT + plotH - ((v - minF) / (maxF - minF + 1e-6)) * plotH;
     }
-    chartCtx.strokeStyle = "rgba(124,245,198,0.35)";
-    chartCtx.lineWidth = 1;
+    chartCtx.strokeStyle = "rgba(124,245,198,0.4)";
+    chartCtx.lineWidth = 1.5;
+    chartCtx.lineJoin = "round";
     chartCtx.beginPath();
     for (let i = 0; i < n; i++) {
       const x = xAt(i);
@@ -1329,8 +1565,8 @@
       else chartCtx.lineTo(x, y);
     }
     chartCtx.stroke();
-    chartCtx.strokeStyle = "rgba(77,163,255,0.9)";
-    chartCtx.lineWidth = 2;
+    chartCtx.strokeStyle = "rgba(77,163,255,0.95)";
+    chartCtx.lineWidth = 2.2;
     chartCtx.beginPath();
     for (let i = 0; i < n; i++) {
       const x = xAt(i);
@@ -1339,11 +1575,39 @@
       else chartCtx.lineTo(x, y);
     }
     chartCtx.stroke();
-    chartCtx.fillStyle = "rgba(255,255,255,0.45)";
-    chartCtx.font = "10px JetBrains Mono, monospace";
-    chartCtx.fillText("best", pad, pad + 10);
-    chartCtx.fillStyle = "rgba(124,245,198,0.6)";
-    chartCtx.fillText("mean", pad + 44, pad + 10);
+    chartCtx.fillStyle = "rgba(77,163,255,0.25)";
+    chartCtx.beginPath();
+    chartCtx.moveTo(xAt(0), yAt(historyBest[0]));
+    for (let i = 1; i < n; i++) chartCtx.lineTo(xAt(i), yAt(historyBest[i]));
+    chartCtx.lineTo(xAt(n - 1), padT + plotH);
+    chartCtx.lineTo(xAt(0), padT + plotH);
+    chartCtx.closePath();
+    chartCtx.fill();
+    chartCtx.fillStyle = "rgba(255,255,255,0.5)";
+    chartCtx.font = "500 10px JetBrains Mono, monospace";
+    chartCtx.fillText("best", padL, 14);
+    chartCtx.fillStyle = "rgba(124,245,198,0.75)";
+    chartCtx.fillText("mean / EMA", padL + 52, 14);
+    chartCtx.fillStyle = "rgba(138,150,176,0.85)";
+    chartCtx.font = "9px JetBrains Mono, monospace";
+    chartCtx.fillText(isRLTrainer(trainer) ? "episode →" : "generation →", padL, h - 10);
+    chartCtx.save();
+    chartCtx.translate(12, padT + plotH / 2);
+    chartCtx.rotate(-Math.PI / 2);
+    chartCtx.fillText(isRLTrainer(trainer) ? "return / fitness" : "fitness", 0, 0);
+    chartCtx.restore();
+    const y0 = padT + plotH;
+    chartCtx.strokeStyle = "rgba(255,255,255,0.12)";
+    chartCtx.beginPath();
+    chartCtx.moveTo(padL, y0);
+    chartCtx.lineTo(padL + plotW, y0);
+    chartCtx.stroke();
+    chartCtx.fillStyle = "rgba(138,150,176,0.65)";
+    chartCtx.font = "8px JetBrains Mono, monospace";
+    chartCtx.textAlign = "right";
+    chartCtx.fillText(maxF.toFixed(0), padL - 6, padT + 4);
+    chartCtx.fillText(minF.toFixed(0), padL - 6, padT + plotH);
+    chartCtx.textAlign = "left";
   }
 
   function drawNetViz() {
@@ -1756,7 +2020,43 @@
     updateHud();
   });
 
+  function closeAllModals() {
+    document.getElementById("modalMethodology").hidden = true;
+    document.getElementById("modalShortcuts").hidden = true;
+  }
+
+  document.getElementById("btnMethodology").addEventListener("click", () => {
+    closeAllModals();
+    document.getElementById("modalMethodology").hidden = false;
+  });
+  document.getElementById("btnShortcuts").addEventListener("click", () => {
+    closeAllModals();
+    document.getElementById("modalShortcuts").hidden = false;
+  });
+  document.querySelectorAll("[data-close-modal]").forEach((el) => {
+    el.addEventListener("click", closeAllModals);
+  });
+
   window.addEventListener("keydown", (e) => {
+    const tag = e.target && e.target.tagName;
+    if (e.key === "Escape") {
+      closeAllModals();
+      return;
+    }
+    if (
+      e.key === "?" &&
+      !e.ctrlKey &&
+      !e.metaKey &&
+      tag !== "INPUT" &&
+      tag !== "SELECT" &&
+      tag !== "TEXTAREA"
+    ) {
+      e.preventDefault();
+      const ms = document.getElementById("modalShortcuts");
+      ms.hidden = !ms.hidden;
+      if (!ms.hidden) document.getElementById("modalMethodology").hidden = true;
+      return;
+    }
     if (playMode !== "human" && playMode !== "versus") return;
     const k = e.key.toLowerCase();
     const map = {
