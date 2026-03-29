@@ -1,0 +1,1174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Neural Snake — Neuroevolution Lab</title>
+  <style>
+    :root {
+      --bg0: #0a0c10;
+      --bg1: #12161f;
+      --panel: rgba(18, 24, 36, 0.82);
+      --border: rgba(120, 160, 220, 0.18);
+      --text: #e8eefc;
+      --muted: #8a96b0;
+      --accent: #4da3ff;
+      --accent2: #7cf5c6;
+      --danger: #ff6b8a;
+      --food: #ffd166;
+      --snake-best: #4da3ff;
+      --snake-pop: rgba(124, 245, 198, 0.22);
+      --font: "JetBrains Mono", "SF Mono", ui-monospace, monospace;
+      --sans: "Inter", system-ui, sans-serif;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; background: var(--bg0); color: var(--text); font-family: var(--sans); }
+    body {
+      background: radial-gradient(1200px 800px at 20% 0%, #152038 0%, transparent 55%),
+                  radial-gradient(900px 600px at 100% 20%, #0f2830 0%, transparent 50%),
+                  var(--bg0);
+    }
+    ::view-transition-group(*),
+    ::view-transition-old(*),
+    ::view-transition-new(*) {
+      animation-duration: 0.25s;
+      animation-timing-function: cubic-bezier(0.19, 1, 0.22, 1);
+    }
+    .wrap {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 20px 18px 32px;
+      display: grid;
+      gap: 16px;
+      grid-template-columns: 1fr 340px;
+    }
+    @media (max-width: 1020px) {
+      .wrap { grid-template-columns: 1fr; }
+    }
+    header {
+      grid-column: 1 / -1;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    h1 {
+      font-size: 1.35rem;
+      font-weight: 650;
+      letter-spacing: -0.02em;
+      margin: 0;
+      font-family: var(--font);
+    }
+    .tagline { color: var(--muted); font-size: 0.9rem; max-width: 52ch; line-height: 1.45; }
+    .main {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      min-width: 0;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px 16px;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 12px 40px rgba(0,0,0,0.35);
+    }
+    .panel h2 {
+      margin: 0 0 10px;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .canvas-wrap {
+      position: relative;
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      background: linear-gradient(145deg, #0d1118, #0a0e14);
+    }
+    #game {
+      display: block;
+      width: 100%;
+      height: auto;
+      image-rendering: pixelated;
+    }
+    .hud {
+      position: absolute;
+      left: 10px;
+      top: 10px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      pointer-events: none;
+    }
+    .pill {
+      font-family: var(--font);
+      font-size: 0.68rem;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: rgba(0,0,0,0.45);
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+    .pill strong { color: var(--accent2); font-weight: 600; }
+    .sidebar { display: flex; flex-direction: column; gap: 12px; }
+    label.row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.82rem;
+      margin-bottom: 8px;
+    }
+    label.row span.h { color: var(--muted); }
+    select, input[type="range"], button, .file-btn {
+      font: inherit;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.04);
+      color: var(--text);
+      padding: 6px 10px;
+    }
+    input[type="range"] { width: 100%; padding: 0; height: 6px; }
+    button, .file-btn {
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    button:hover, .file-btn:hover {
+      border-color: rgba(77, 163, 255, 0.45);
+      background: rgba(77, 163, 255, 0.08);
+    }
+    button.primary {
+      background: linear-gradient(135deg, rgba(77,163,255,0.25), rgba(124,245,198,0.12));
+      border-color: rgba(77, 163, 255, 0.35);
+    }
+    button.danger { border-color: rgba(255,107,138,0.35); color: #ffc2cf; }
+    .btn-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+    .stats {
+      font-family: var(--font);
+      font-size: 0.75rem;
+      line-height: 1.55;
+      color: var(--muted);
+    }
+    .stats b { color: var(--text); }
+    #chart {
+      width: 100%;
+      height: 120px;
+      display: block;
+      border-radius: 8px;
+      background: rgba(0,0,0,0.25);
+    }
+    #netviz {
+      width: 100%;
+      height: 200px;
+      display: block;
+      border-radius: 8px;
+      background: rgba(0,0,0,0.3);
+    }
+    .hint { font-size: 0.75rem; color: var(--muted); margin-top: 8px; line-height: 1.45; }
+    input[type="file"] { display: none; }
+    .kbd { font-family: var(--font); font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>Neural Snake Lab</h1>
+        <p class="tagline">Train snakes in-browser with neuroevolution. Swap FFNN, Elman RNN, or LSTM brains; use a genetic algorithm or an evolution strategy. No backprop — only fitness, populations, and mutation.</p>
+      </div>
+    </header>
+
+    <div class="main">
+      <div class="canvas-wrap">
+        <canvas id="game" width="640" height="640" aria-label="Snake game"></canvas>
+        <div class="hud">
+          <span class="pill">Gen <strong id="hudGen">0</strong></span>
+          <span class="pill">Best fit <strong id="hudBest">0</strong></span>
+          <span class="pill">Mean <strong id="hudMean">0</strong></span>
+          <span class="pill">Champ score <strong id="hudScore">0</strong></span>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>Fitness over generations</h2>
+        <canvas id="chart" width="800" height="240"></canvas>
+      </div>
+    </div>
+
+    <aside class="sidebar">
+      <div class="panel">
+        <h2>Evolution</h2>
+        <label class="row"><span class="h">Brain architecture</span>
+          <select id="arch">
+            <option value="ffnn">Feedforward (24→16→4)</option>
+            <option value="rnn">Elman RNN (recurrent)</option>
+            <option value="lstm">LSTM (gated memory)</option>
+          </select>
+        </label>
+        <label class="row"><span class="h">Training algorithm</span>
+          <select id="trainer">
+            <option value="ga">Genetic algorithm (crossover + mutation)</option>
+            <option value="es">Evolution strategy (μ elites, mutate)</option>
+          </select>
+        </label>
+        <label class="row"><span class="h">Population</span>
+          <select id="popSize">
+            <option>40</option>
+            <option selected>80</option>
+            <option>120</option>
+            <option>160</option>
+          </select>
+        </label>
+        <label class="row"><span class="h">Mutation σ</span>
+          <input type="range" id="mutSigma" min="0.05" max="0.6" step="0.01" value="0.22" />
+        </label>
+        <label class="row"><span class="h">Mutation rate</span>
+          <input type="range" id="mutRate" min="0.02" max="0.35" step="0.01" value="0.12" />
+        </label>
+        <label class="row"><span class="h">Sim speed</span>
+          <input type="range" id="simSpeed" min="1" max="120" step="1" value="24" />
+        </label>
+        <label class="row" style="grid-template-columns: 1fr;">
+          <span class="h"><input type="checkbox" id="turbo" /> Turbo train (minimal rendering, max throughput)</span>
+        </label>
+        <div class="btn-row">
+          <button type="button" class="primary" id="btnToggle">Pause</button>
+          <button type="button" id="btnStepGen">Step 1 generation</button>
+          <button type="button" class="danger" id="btnReset">Reset population</button>
+        </div>
+        <div class="stats" id="stats"></div>
+      </div>
+
+      <div class="panel">
+        <h2>Play & export</h2>
+        <label class="row" style="grid-template-columns: 1fr;">
+          <span class="h"><input type="checkbox" id="humanMode" /> Human play — <span class="kbd">arrows</span> / <span class="kbd">WASD</span></span>
+        </label>
+        <p class="hint">Human mode pauses evolution. Uncheck to resume training. Compare your score to the champion fitness.</p>
+        <div class="btn-row">
+          <button type="button" id="btnSave">Save champion JSON</button>
+          <label class="file-btn"><input type="file" id="fileLoad" accept="application/json" /> Load genome</label>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Best network (weights)</h2>
+        <canvas id="netviz" width="640" height="400"></canvas>
+        <p class="hint">Blue = positive, red = negative. Brightness = magnitude. RNN/LSTM shows input→hidden (first slice) for readability.</p>
+      </div>
+    </aside>
+  </div>
+
+  <script>
+(function () {
+  "use strict";
+
+  const GRID_W = 20;
+  const GRID_H = 20;
+  const INPUT_DIM = 24;
+  const HIDDEN = 16;
+  const OUTPUT_DIM = 4;
+  const DIRS = [
+    { x: 0, y: -1 },
+    { x: 1, y: 0 },
+    { x: 0, y: 1 },
+    { x: -1, y: 0 },
+  ];
+
+  const TAU = Math.sqrt(2);
+  const sigmoid = (t) => 1 / (1 + Math.exp(-t));
+  const tanh = Math.tanh;
+
+  function genomeLength(arch) {
+    if (arch === "ffnn") return INPUT_DIM * HIDDEN + HIDDEN + HIDDEN * OUTPUT_DIM + OUTPUT_DIM;
+    if (arch === "rnn") {
+      return (
+        INPUT_DIM * HIDDEN +
+        HIDDEN * HIDDEN +
+        HIDDEN +
+        HIDDEN * OUTPUT_DIM +
+        OUTPUT_DIM
+      );
+    }
+    if (arch === "lstm") {
+      const concat = INPUT_DIM + HIDDEN;
+      const gates = 4 * HIDDEN;
+      return concat * gates + gates + HIDDEN * OUTPUT_DIM + OUTPUT_DIM;
+    }
+    return 0;
+  }
+
+  function randomGenome(arch) {
+    const n = genomeLength(arch);
+    const g = new Float32Array(n);
+    for (let i = 0; i < n; i++) g[i] = (Math.random() * 2 - 1) * TAU;
+    return g;
+  }
+
+  function cloneGenome(g) {
+    return new Float32Array(g);
+  }
+
+  function forwardFF(g, input, outLogits) {
+    let o = 0;
+    const w1 = g;
+    o += INPUT_DIM * HIDDEN;
+    const b1 = g.subarray(o, o + HIDDEN);
+    o += HIDDEN;
+    const w2 = g.subarray(o, o + HIDDEN * OUTPUT_DIM);
+    o += HIDDEN * OUTPUT_DIM;
+    const b2 = g.subarray(o, o + OUTPUT_DIM);
+
+    const h = new Float32Array(HIDDEN);
+    for (let i = 0; i < HIDDEN; i++) {
+      let s = b1[i];
+      const base = i;
+      for (let j = 0; j < INPUT_DIM; j++) s += input[j] * w1[j * HIDDEN + base];
+      h[i] = tanh(s);
+    }
+    for (let k = 0; k < OUTPUT_DIM; k++) {
+      let s = b2[k];
+      for (let i = 0; i < HIDDEN; i++) s += h[i] * w2[i * OUTPUT_DIM + k];
+      outLogits[k] = s;
+    }
+  }
+
+  function forwardRNN(g, input, state, outLogits) {
+    const hPrev = state._hPrev;
+    hPrev.set(state.h);
+    let o = 0;
+    const wih = g.subarray(o, o + INPUT_DIM * HIDDEN);
+    o += INPUT_DIM * HIDDEN;
+    const whh = g.subarray(o, o + HIDDEN * HIDDEN);
+    o += HIDDEN * HIDDEN;
+    const bh = g.subarray(o, o + HIDDEN);
+    o += HIDDEN;
+    const who = g.subarray(o, o + HIDDEN * OUTPUT_DIM);
+    o += HIDDEN * OUTPUT_DIM;
+    const bo = g.subarray(o, o + OUTPUT_DIM);
+
+    const h = state.h;
+    for (let i = 0; i < HIDDEN; i++) {
+      let s = bh[i];
+      for (let j = 0; j < INPUT_DIM; j++) s += input[j] * wih[j * HIDDEN + i];
+      for (let j = 0; j < HIDDEN; j++) s += hPrev[j] * whh[j * HIDDEN + i];
+      h[i] = tanh(s);
+    }
+    for (let k = 0; k < OUTPUT_DIM; k++) {
+      let s = bo[k];
+      for (let i = 0; i < HIDDEN; i++) s += h[i] * who[i * OUTPUT_DIM + k];
+      outLogits[k] = s;
+    }
+  }
+
+  function forwardLSTM(g, input, state, outLogits) {
+    const concatLen = INPUT_DIM + HIDDEN;
+    const gates = 4 * HIDDEN;
+    let o = 0;
+    const W = g.subarray(o, o + concatLen * gates);
+    o += concatLen * gates;
+    const b = g.subarray(o, o + gates);
+    o += gates;
+    const who = g.subarray(o, o + HIDDEN * OUTPUT_DIM);
+    o += HIDDEN * OUTPUT_DIM;
+    const bo = g.subarray(o, o + OUTPUT_DIM);
+
+    const work = new Float32Array(gates);
+    for (let gidx = 0; gidx < gates; gidx++) {
+      let s = b[gidx];
+      for (let j = 0; j < INPUT_DIM; j++) s += input[j] * W[j * gates + gidx];
+      for (let j = 0; j < HIDDEN; j++) s += state.h[j] * W[(INPUT_DIM + j) * gates + gidx];
+      work[gidx] = s;
+    }
+
+    const iGate = new Float32Array(HIDDEN);
+    const fGate = new Float32Array(HIDDEN);
+    const oGate = new Float32Array(HIDDEN);
+    const gGate = new Float32Array(HIDDEN);
+    for (let i = 0; i < HIDDEN; i++) {
+      iGate[i] = sigmoid(work[i]);
+      fGate[i] = sigmoid(work[HIDDEN + i]);
+      oGate[i] = sigmoid(work[2 * HIDDEN + i]);
+      gGate[i] = tanh(work[3 * HIDDEN + i]);
+    }
+    const c = state.c;
+    const h = state.h;
+    for (let i = 0; i < HIDDEN; i++) {
+      c[i] = fGate[i] * c[i] + iGate[i] * gGate[i];
+      h[i] = oGate[i] * tanh(c[i]);
+    }
+    for (let k = 0; k < OUTPUT_DIM; k++) {
+      let s = bo[k];
+      for (let i = 0; i < HIDDEN; i++) s += h[i] * who[i * OUTPUT_DIM + k];
+      outLogits[k] = s;
+    }
+  }
+
+  function forwardBrain(arch, g, input, state, outLogits) {
+    if (arch === "ffnn") forwardFF(g, input, outLogits);
+    else if (arch === "rnn") forwardRNN(g, input, state, outLogits);
+    else forwardLSTM(g, input, state, outLogits);
+  }
+
+  function makeState(arch) {
+    if (arch === "ffnn") return null;
+    if (arch === "rnn") return { h: new Float32Array(HIDDEN), _hPrev: new Float32Array(HIDDEN) };
+    return { h: new Float32Array(HIDDEN), c: new Float32Array(HIDDEN) };
+  }
+
+  function resetState(arch, state) {
+    if (!state) return;
+    if (arch === "rnn") {
+      state.h.fill(0);
+      state._hPrev.fill(0);
+    }
+    else if (arch === "lstm") {
+      state.h.fill(0);
+      state.c.fill(0);
+    }
+  }
+
+  function argmaxMasked(logits, dirIdx, head, bodySet, gridW, gridH) {
+    const hx = head.x;
+    const hy = head.y;
+    let best = -1;
+    let bestv = -Infinity;
+    for (let a = 0; a < 4; a++) {
+      const nd = (dirIdx + a) % 4;
+      const nx = hx + DIRS[nd].x;
+      const ny = hy + DIRS[nd].y;
+      if (nx < 0 || ny < 0 || nx >= gridW || ny >= gridH) continue;
+      const key = ny * gridW + nx;
+      if (bodySet.has(key)) continue;
+      if (logits[a] > bestv) {
+        bestv = logits[a];
+        best = a;
+      }
+    }
+    if (best < 0) {
+      for (let a = 0; a < 4; a++) {
+        if (logits[a] > bestv) {
+          bestv = logits[a];
+          best = a;
+        }
+      }
+    }
+    return best >= 0 ? best : 0;
+  }
+
+  function buildSensors(snake, food, dirIdx, gridW, gridH, stepsSinceFood, maxSteps) {
+    const out = new Float32Array(INPUT_DIM);
+    const head = snake[0];
+    const hx = head.x;
+    const hy = head.y;
+    const bodySet = new Set();
+    for (let i = 1; i < snake.length; i++) bodySet.add(snake[i].y * gridW + snake[i].x);
+
+    let o = 0;
+    for (let d = 0; d < 4; d++) {
+      const dx = DIRS[d].x;
+      const dy = DIRS[d].y;
+      let wx = hx;
+      let wy = hy;
+      let wall = 0;
+      while (true) {
+        wx += dx;
+        wy += dy;
+        if (wx < 0 || wy < 0 || wx >= gridW || wy >= gridH) break;
+        wall++;
+      }
+      wx = hx;
+      wy = hy;
+      let bodyDist = 0;
+      let hit = false;
+      while (true) {
+        wx += dx;
+        wy += dy;
+        if (wx < 0 || wy < 0 || wx >= gridW || wy >= gridH) break;
+        bodyDist++;
+        if (bodySet.has(wy * gridW + wx)) {
+          hit = true;
+          break;
+        }
+      }
+      if (!hit) bodyDist = wall + 1;
+      out[o++] = wall / (gridW + gridH);
+      out[o++] = Math.min(1, bodyDist / (gridW + gridH));
+    }
+
+    const fdx = (food.x - hx) / gridW;
+    const fdy = (food.y - hy) / gridH;
+    const flen = Math.hypot(fdx, fdy) + 1e-6;
+    out[o++] = fdx / flen;
+    out[o++] = fdy / flen;
+
+    for (let d = 0; d < 4; d++) out[o++] = d === dirIdx ? 1 : 0;
+
+    const ld = (dirIdx + 3) % 4;
+    for (let d = 0; d < 4; d++) out[o++] = d === ld ? 1 : 0;
+    for (let d = 0; d < 4; d++) out[o++] = d === (dirIdx + 1) % 4 ? 1 : 0;
+
+    out[o++] = Math.min(1, stepsSinceFood / Math.max(1, maxSteps * 0.25));
+    const man = (Math.abs(food.x - hx) + Math.abs(food.y - hy)) / (gridW + gridH);
+    out[o++] = man;
+    return out;
+  }
+
+  function createGame() {
+    const snake = [];
+    const cx = Math.floor(GRID_W / 2);
+    const cy = Math.floor(GRID_H / 2);
+    snake.push({ x: cx, y: cy });
+    snake.push({ x: cx - 1, y: cy });
+    snake.push({ x: cx - 2, y: cy });
+    let dirIdx = 1;
+    const food = { x: cx + 3, y: cy };
+    return { snake, dirIdx, food, score: 0, steps: 0, stepsSinceFood: 0 };
+  }
+
+  function randomEmptyCell(snake, gridW, gridH) {
+    const occ = new Set(snake.map((p) => p.y * gridW + p.x));
+    const opts = [];
+    for (let y = 0; y < gridH; y++)
+      for (let x = 0; x < gridW; x++) {
+        const k = y * gridW + x;
+        if (!occ.has(k)) opts.push({ x, y });
+      }
+    return opts[Math.floor(Math.random() * opts.length)];
+  }
+
+  function stepGame(game, newDirIdx) {
+    const head = game.snake[0];
+    game.dirIdx = newDirIdx;
+    const nx = head.x + DIRS[game.dirIdx].x;
+    const ny = head.y + DIRS[game.dirIdx].y;
+    game.steps++;
+    game.stepsSinceFood++;
+    if (nx < 0 || ny < 0 || nx >= GRID_W || ny >= GRID_H) return false;
+    const key = ny * GRID_W + nx;
+    for (let i = 0; i < game.snake.length - 1; i++) {
+      if (game.snake[i].y * GRID_W + game.snake[i].x === key) return false;
+    }
+    game.snake.unshift({ x: nx, y: ny });
+    if (nx === game.food.x && ny === game.food.y) {
+      game.score++;
+      game.stepsSinceFood = 0;
+      game.food = randomEmptyCell(game.snake, GRID_W, GRID_H);
+    } else game.snake.pop();
+    return true;
+  }
+
+  function runEpisode(arch, genome, maxSteps, onStep) {
+    const game = createGame();
+    const state = makeState(arch);
+    resetState(arch, state);
+    const input = new Float32Array(INPUT_DIM);
+    const logits = new Float32Array(OUTPUT_DIM);
+    let minMan = Math.abs(game.food.x - game.snake[0].x) + Math.abs(game.food.y - game.snake[0].y);
+    let sumMan = 0;
+    let manN = 0;
+
+    for (let t = 0; t < maxSteps; t++) {
+      const bodySet = new Set();
+      for (let i = 1; i < game.snake.length; i++) bodySet.add(game.snake[i].y * GRID_W + game.snake[i].x);
+
+      buildSensors(game.snake, game.food, game.dirIdx, GRID_W, GRID_H, game.stepsSinceFood, maxSteps).forEach((v, i) => (input[i] = v));
+      forwardBrain(arch, genome, input, state, logits);
+      const act = argmaxMasked(logits, game.dirIdx, game.snake[0], bodySet, GRID_W, GRID_H);
+      const newDir = (game.dirIdx + act) % 4;
+      const alive = stepGame(game, newDir);
+      const man = Math.abs(game.food.x - game.snake[0].x) + Math.abs(game.food.y - game.snake[0].y);
+      sumMan += man;
+      manN++;
+      if (man < minMan) minMan = man;
+      if (onStep) onStep(game, t);
+      if (!alive) break;
+    }
+
+    const s = game.score;
+    const fitness =
+      s * s * 120 +
+      game.steps * 0.15 +
+      (1 - minMan / (GRID_W + GRID_H)) * 40 +
+      (manN > 0 ? (1 - sumMan / manN / (GRID_W + GRID_H)) * 25 : 0) -
+      game.stepsSinceFood * 0.08;
+    return { fitness, score: s, steps: game.steps, game };
+  }
+
+  function crossover(a, b) {
+    const n = a.length;
+    const c = new Float32Array(n);
+    const cut = 1 + Math.floor(Math.random() * (n - 1));
+    for (let i = 0; i < cut; i++) c[i] = a[i];
+    for (let i = cut; i < n; i++) c[i] = b[i];
+    return c;
+  }
+
+  function mutate(g, rate, sigma) {
+    const c = cloneGenome(g);
+    for (let i = 0; i < c.length; i++) {
+      if (Math.random() < rate) c[i] += (Math.random() * 2 - 1) * 2 * sigma;
+    }
+    return c;
+  }
+
+  function tournament(fitness, k) {
+    let best = Math.floor(Math.random() * fitness.length);
+    for (let i = 1; i < k; i++) {
+      const j = Math.floor(Math.random() * fitness.length);
+      if (fitness[j] > fitness[best]) best = j;
+    }
+    return best;
+  }
+
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+  const chartC = document.getElementById("chart");
+  const chartCtx = chartC.getContext("2d");
+  const netC = document.getElementById("netviz");
+  const netCtx = netC.getContext("2d");
+
+  const CELL = Math.floor(canvas.width / GRID_W);
+
+  let arch = "ffnn";
+  let trainer = "ga";
+  let population = [];
+  let fitness = [];
+  let generation = 0;
+  let bestIdx = 0;
+  let paused = false;
+  let humanMode = false;
+  let humanGame = null;
+  let humanDirPending = null;
+
+  const historyBest = [];
+  const historyMean = [];
+
+  let champion = null;
+  let champFitness = -Infinity;
+
+  let showcaseGame = null;
+  let showcaseT = 0;
+  let showcaseState = null;
+  let showcaseInput = new Float32Array(INPUT_DIM);
+  let showcaseLogits = new Float32Array(OUTPUT_DIM);
+
+  function syncPopulationSize() {
+    const n = parseInt(document.getElementById("popSize").value, 10);
+    while (population.length < n) population.push(randomGenome(arch));
+    while (population.length > n) population.pop();
+    fitness = new Array(population.length).fill(0);
+  }
+
+  function evaluateAll() {
+    const maxSteps = GRID_W * GRID_H * 4;
+    for (let i = 0; i < population.length; i++) {
+      const r = runEpisode(arch, population[i], maxSteps, null);
+      fitness[i] = r.fitness;
+      if (r.fitness > champFitness) {
+        champFitness = r.fitness;
+        champion = cloneGenome(population[i]);
+      }
+    }
+    bestIdx = 0;
+    for (let i = 1; i < fitness.length; i++) if (fitness[i] > fitness[bestIdx]) bestIdx = i;
+    const mean = fitness.reduce((a, b) => a + b, 0) / fitness.length;
+    historyBest.push(fitness[bestIdx]);
+    historyMean.push(mean);
+    if (historyBest.length > 200) {
+      historyBest.shift();
+      historyMean.shift();
+    }
+    generation++;
+    resetShowcaseFromBest();
+  }
+
+  function resetShowcaseFromBest() {
+    const g = champion ? champion : population[bestIdx];
+    showcaseGame = createGame();
+    showcaseState = makeState(arch);
+    resetState(arch, showcaseState);
+    showcaseT = 0;
+  }
+
+  function breedNextGeneration() {
+    const pop = population.length;
+    const eliteN = Math.max(2, Math.floor(pop * 0.05));
+    const order = fitness.map((f, i) => ({ f, i })).sort((a, b) => b.f - a.f);
+    const eliteIdx = order.slice(0, eliteN).map((o) => o.i);
+    const next = [];
+
+    for (const i of eliteIdx) next.push(cloneGenome(population[i]));
+
+    const sigma = parseFloat(document.getElementById("mutSigma").value);
+    const rate = parseFloat(document.getElementById("mutRate").value);
+
+    if (trainer === "ga") {
+      while (next.length < pop) {
+        const p1 = population[tournament(fitness, 4)];
+        const p2 = population[tournament(fitness, 4)];
+        let child = Math.random() < 0.72 ? crossover(p1, p2) : cloneGenome(Math.random() < 0.5 ? p1 : p2);
+        child = mutate(child, rate, sigma);
+        next.push(child);
+      }
+    } else {
+      const mu = Math.min(eliteN + 3, Math.max(3, Math.floor(pop * 0.08)));
+      const elites = eliteIdx.map((i) => cloneGenome(population[i]));
+      while (next.length < pop) {
+        const parent = elites[Math.floor(Math.random() * elites.length)];
+        next.push(mutate(parent, Math.min(0.45, rate * 1.8), sigma));
+      }
+    }
+    population = next;
+  }
+
+  function stepGenerationPipeline() {
+    evaluateAll();
+    breedNextGeneration();
+    updateHud();
+    drawChart();
+    drawNetViz();
+  }
+
+  function updateHud() {
+    document.getElementById("hudGen").textContent = String(generation);
+    document.getElementById("hudBest").textContent = fitness.length ? fitness[bestIdx].toFixed(1) : "0";
+    const mean = fitness.length ? fitness.reduce((a, b) => a + b, 0) / fitness.length : 0;
+    document.getElementById("hudMean").textContent = mean.toFixed(1);
+    document.getElementById("hudScore").textContent = showcaseGame ? String(showcaseGame.score) : "0";
+    document.getElementById("stats").innerHTML =
+      `<b>Champion fitness (all-time)</b> ${champFitness.toFixed(2)}<br/>` +
+      `<b>Genome length</b> ${genomeLength(arch)} floats<br/>` +
+      `<b>Architecture</b> ${arch.toUpperCase()} · <b>Trainer</b> ${trainer.toUpperCase()}`;
+  }
+
+  function drawGridGame(game) {
+    ctx.fillStyle = "#07090e";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    for (let x = 0; x <= GRID_W; x++) {
+      ctx.strokeStyle = "rgba(255,255,255,0.04)";
+      ctx.beginPath();
+      ctx.moveTo(x * CELL, 0);
+      ctx.lineTo(x * CELL, GRID_H * CELL);
+      ctx.stroke();
+    }
+    for (let y = 0; y <= GRID_H; y++) {
+      ctx.beginPath();
+      ctx.moveTo(0, y * CELL);
+      ctx.lineTo(GRID_W * CELL, y * CELL);
+      ctx.stroke();
+    }
+    ctx.fillStyle = varFood();
+    ctx.fillRect(game.food.x * CELL + 2, game.food.y * CELL + 2, CELL - 4, CELL - 4);
+    for (let i = game.snake.length - 1; i >= 0; i--) {
+      const p = game.snake[i];
+      const t = i === 0 ? 1 : i / game.snake.length;
+      ctx.fillStyle = i === 0 ? "#6ec4ff" : `rgba(100, 200, 255, ${0.25 + t * 0.45})`;
+      ctx.fillRect(p.x * CELL + 1, p.y * CELL + 1, CELL - 2, CELL - 2);
+    }
+  }
+
+  function varFood() {
+    return getComputedStyle(document.documentElement).getPropertyValue("--food").trim() || "#ffd166";
+  }
+
+  function drawChart() {
+    const w = chartC.width;
+    const h = chartC.height;
+    chartCtx.clearRect(0, 0, w, h);
+    chartCtx.fillStyle = "rgba(0,0,0,0.2)";
+    chartCtx.fillRect(0, 0, w, h);
+    if (historyBest.length < 2) return;
+    const maxF = Math.max(...historyBest, 1);
+    const minF = Math.min(...historyMean, ...historyBest, 0);
+    const pad = 8;
+    const plotW = w - pad * 2;
+    const plotH = h - pad * 2;
+    const n = historyBest.length;
+    function xAt(i) {
+      return pad + (i / (n - 1)) * plotW;
+    }
+    function yAt(v) {
+      return pad + plotH - ((v - minF) / (maxF - minF + 1e-6)) * plotH;
+    }
+    chartCtx.strokeStyle = "rgba(124,245,198,0.35)";
+    chartCtx.lineWidth = 1;
+    chartCtx.beginPath();
+    for (let i = 0; i < n; i++) {
+      const x = xAt(i);
+      const y = yAt(historyMean[i]);
+      if (i === 0) chartCtx.moveTo(x, y);
+      else chartCtx.lineTo(x, y);
+    }
+    chartCtx.stroke();
+    chartCtx.strokeStyle = "rgba(77,163,255,0.9)";
+    chartCtx.lineWidth = 2;
+    chartCtx.beginPath();
+    for (let i = 0; i < n; i++) {
+      const x = xAt(i);
+      const y = yAt(historyBest[i]);
+      if (i === 0) chartCtx.moveTo(x, y);
+      else chartCtx.lineTo(x, y);
+    }
+    chartCtx.stroke();
+    chartCtx.fillStyle = "rgba(255,255,255,0.45)";
+    chartCtx.font = "10px JetBrains Mono, monospace";
+    chartCtx.fillText("best", pad, pad + 10);
+    chartCtx.fillStyle = "rgba(124,245,198,0.6)";
+    chartCtx.fillText("mean", pad + 44, pad + 10);
+  }
+
+  function drawNetViz() {
+    function strokeWeight(a, b, w) {
+      const mag = Math.min(1, Math.abs(w));
+      const alpha = 0.08 + mag * 0.55;
+      netCtx.strokeStyle = w >= 0 ? `rgba(77,163,255,${alpha})` : `rgba(255,107,138,${alpha})`;
+      netCtx.beginPath();
+      netCtx.moveTo(a.x, a.y);
+      netCtx.lineTo(b.x, b.y);
+      netCtx.stroke();
+    }
+
+    const g = champion || (population.length ? population[bestIdx] : null);
+    const nw = netC.width;
+    const nh = netC.height;
+    netCtx.clearRect(0, 0, nw, nh);
+    netCtx.fillStyle = "rgba(0,0,0,0.25)";
+    netCtx.fillRect(0, 0, nw, nh);
+    if (!g) return;
+
+    if (arch === "ffnn") {
+      const cols = [INPUT_DIM, HIDDEN, OUTPUT_DIM];
+      const maxN = Math.max(...cols);
+      const colW = nw / (cols.length + 0.5);
+      const nodes = [];
+      for (let c = 0; c < cols.length; c++) {
+        const count = cols[c];
+        for (let i = 0; i < count; i++) {
+          const x = 0.35 * colW + c * colW;
+          const y = (i + (maxN - count) / 2 + 0.5) * (nh / (maxN + 1));
+          nodes.push({ x, y, c, i });
+        }
+      }
+      function nodeAt(c, i) {
+        return nodes.find((n) => n.c === c && n.i === i);
+      }
+      netCtx.lineWidth = 0.5;
+      for (let j = 0; j < INPUT_DIM; j++)
+        for (let i = 0; i < HIDDEN; i++) {
+          const w = g[j * HIDDEN + i];
+          const na = nodeAt(0, j);
+          const nb = nodeAt(1, i);
+          strokeWeight(na, nb, w);
+        }
+      const off = INPUT_DIM * HIDDEN + HIDDEN;
+      for (let i = 0; i < HIDDEN; i++)
+        for (let k = 0; k < OUTPUT_DIM; k++) {
+          const w = g[off + i * OUTPUT_DIM + k];
+          const na = nodeAt(1, i);
+          const nb = nodeAt(2, k);
+          strokeWeight(na, nb, w);
+        }
+      for (const n of nodes) {
+        netCtx.beginPath();
+        netCtx.arc(n.x, n.y, 3.2, 0, Math.PI * 2);
+        netCtx.fillStyle = "rgba(200,210,240,0.85)";
+        netCtx.fill();
+      }
+    } else {
+      const rows = INPUT_DIM;
+      const colsV = Math.min(HIDDEN, 32);
+      const cell = Math.min(nw / (colsV + 1), nh / (rows + 1));
+      const ox = (nw - colsV * cell) / 2;
+      const oy = (nh - rows * cell) / 2;
+      let wstride = HIDDEN;
+      if (arch === "lstm") wstride = 4 * HIDDEN;
+      for (let j = 0; j < rows; j++)
+        for (let i = 0; i < colsV; i++) {
+          let w = 0;
+          if (arch === "rnn") w = g[j * HIDDEN + i];
+          else w = g[j * wstride + i];
+          const t = Math.max(-1, Math.min(1, w / 1.5));
+          const r = t < 0 ? Math.round(-t * 220) : 0;
+          const b = t > 0 ? Math.round(t * 220) : 0;
+          const br = Math.min(255, Math.round(Math.abs(t) * 180));
+          netCtx.fillStyle = `rgb(${r + 30},${40 + br / 4},${b + 50})`;
+          netCtx.fillRect(ox + i * cell, oy + j * cell, cell - 1, cell - 1);
+        }
+      netCtx.fillStyle = "rgba(255,255,255,0.5)";
+      netCtx.font = "10px sans-serif";
+      netCtx.fillText(arch === "rnn" ? "Wih (input→hidden)" : "LSTM W (input slice)", ox, oy - 6);
+    }
+  }
+
+  function stepShowcaseOnce() {
+    if (!showcaseGame) return;
+    const maxSteps = GRID_W * GRID_H * 4;
+    if (showcaseT >= maxSteps) {
+      resetShowcaseFromBest();
+      return;
+    }
+    const g = champion || population[bestIdx];
+    const bodySet = new Set();
+    for (let i = 1; i < showcaseGame.snake.length; i++) bodySet.add(showcaseGame.snake[i].y * GRID_W + showcaseGame.snake[i].x);
+    const sens = buildSensors(
+      showcaseGame.snake,
+      showcaseGame.food,
+      showcaseGame.dirIdx,
+      GRID_W,
+      GRID_H,
+      showcaseGame.stepsSinceFood,
+      maxSteps
+    );
+    for (let i = 0; i < INPUT_DIM; i++) showcaseInput[i] = sens[i];
+    forwardBrain(arch, g, showcaseInput, showcaseState, showcaseLogits);
+    const act = argmaxMasked(
+      showcaseLogits,
+      showcaseGame.dirIdx,
+      showcaseGame.snake[0],
+      bodySet,
+      GRID_W,
+      GRID_H
+    );
+    const newDir = (showcaseGame.dirIdx + act) % 4;
+    const alive = stepGame(showcaseGame, newDir);
+    showcaseT++;
+    if (!alive) resetShowcaseFromBest();
+  }
+
+  function humanStep() {
+    if (!humanGame) humanGame = createGame();
+    let nd = humanGame.dirIdx;
+    if (humanDirPending !== null) {
+      const hx = humanGame.snake[0].x;
+      const hy = humanGame.snake[0].y;
+      const cur = humanGame.dirIdx;
+      for (const cand of humanDirPending) {
+        const nx = hx + DIRS[cand].x;
+        const ny = hy + DIRS[cand].y;
+        const opp = (cur + 2) % 4;
+        if (cand === opp) continue;
+        if (nx >= 0 && ny >= 0 && nx < GRID_W && ny < GRID_H) {
+          let hit = false;
+          for (let i = 0; i < humanGame.snake.length - 1; i++) {
+            if (humanGame.snake[i].x === nx && humanGame.snake[i].y === ny) hit = true;
+          }
+          if (!hit) {
+            nd = cand;
+            break;
+          }
+        }
+      }
+      humanDirPending = null;
+    }
+    const alive = stepGame(humanGame, nd);
+    if (!alive) humanGame = createGame();
+    drawGridGame(humanGame);
+    document.getElementById("hudScore").textContent = String(humanGame.score);
+  }
+
+  let lastGenTs = 0;
+  let lastHumanTs = 0;
+  let turboAnim = 0;
+
+  function frame(ts) {
+    const turbo = document.getElementById("turbo").checked;
+    const speed = parseInt(document.getElementById("simSpeed").value, 10);
+
+    if (humanMode) {
+      const humanInterval = Math.max(55, 220 - speed * 1.5);
+      if (ts - lastHumanTs >= humanInterval) {
+        lastHumanTs = ts;
+        humanStep();
+      }
+      requestAnimationFrame(frame);
+      return;
+    }
+
+    if (!paused) {
+      let showcaseSteps = turbo ? 0 : Math.max(1, Math.ceil(speed / 12));
+      if (turbo) {
+        turboAnim++;
+        if (turboAnim % 4 === 0) showcaseSteps = Math.max(1, Math.ceil(speed / 45));
+      }
+      for (let i = 0; i < showcaseSteps; i++) stepShowcaseOnce();
+      if (showcaseGame) drawGridGame(showcaseGame);
+      document.getElementById("hudScore").textContent = showcaseGame ? String(showcaseGame.score) : "0";
+
+      const genCooldown = turbo ? 0 : Math.max(120, 2800 / Math.max(1, speed));
+      const maxTurboGens = Math.min(2, 1 + Math.floor(speed / 50));
+      if (turbo) {
+        for (let g = 0; g < maxTurboGens; g++) stepGenerationPipeline();
+        if (showcaseGame) drawGridGame(showcaseGame);
+      } else if (ts - lastGenTs >= genCooldown) {
+        lastGenTs = ts;
+        stepGenerationPipeline();
+      }
+
+      updateHud();
+      drawChart();
+      drawNetViz();
+    } else if (showcaseGame) drawGridGame(showcaseGame);
+
+    requestAnimationFrame(frame);
+  }
+
+  document.getElementById("btnToggle").addEventListener("click", () => {
+    paused = !paused;
+    document.getElementById("btnToggle").textContent = paused ? "Resume" : "Pause";
+  });
+
+  document.getElementById("btnStepGen").addEventListener("click", () => {
+    if (humanMode) return;
+    stepGenerationPipeline();
+    updateHud();
+    drawChart();
+    drawNetViz();
+  });
+
+  document.getElementById("btnReset").addEventListener("click", () => {
+    generation = 0;
+    champFitness = -Infinity;
+    champion = null;
+    historyBest.length = 0;
+    historyMean.length = 0;
+    population = [];
+    syncPopulationSize();
+    for (let i = 0; i < population.length; i++) population[i] = randomGenome(arch);
+    fitness = new Array(population.length).fill(0);
+    evaluateAll();
+    breedNextGeneration();
+    updateHud();
+    drawChart();
+    drawNetViz();
+  });
+
+  document.getElementById("arch").addEventListener("change", (e) => {
+    arch = e.target.value;
+    generation = 0;
+    champFitness = -Infinity;
+    champion = null;
+    historyBest.length = 0;
+    historyMean.length = 0;
+    population = [];
+    syncPopulationSize();
+    for (let i = 0; i < population.length; i++) population[i] = randomGenome(arch);
+    fitness = new Array(population.length).fill(0);
+    evaluateAll();
+    breedNextGeneration();
+    resetShowcaseFromBest();
+    updateHud();
+    drawChart();
+    drawNetViz();
+  });
+
+  document.getElementById("trainer").addEventListener("change", (e) => {
+    trainer = e.target.value;
+    updateHud();
+  });
+
+  document.getElementById("popSize").addEventListener("change", () => {
+    syncPopulationSize();
+    fitness = new Array(population.length).fill(0);
+    updateHud();
+  });
+
+  document.getElementById("humanMode").addEventListener("change", (e) => {
+    humanMode = e.target.checked;
+    paused = humanMode ? true : paused;
+    document.getElementById("btnToggle").textContent = paused ? "Resume" : "Pause";
+    if (!humanMode) {
+      humanGame = null;
+      resetShowcaseFromBest();
+    }
+    updateHud();
+  });
+
+  window.addEventListener("keydown", (e) => {
+    if (!humanMode) return;
+    const k = e.key.toLowerCase();
+    const map = {
+      arrowup: 0,
+      w: 0,
+      arrowright: 1,
+      d: 1,
+      arrowdown: 2,
+      s: 2,
+      arrowleft: 3,
+      a: 3,
+    };
+    if (map[k] !== undefined) {
+      humanDirPending = [map[k]];
+      e.preventDefault();
+    }
+  });
+
+  document.getElementById("btnSave").addEventListener("click", () => {
+    const g = champion || (population.length ? population[bestIdx] : null);
+    if (!g) return;
+    const blob = new Blob(
+      [
+        JSON.stringify({
+          v: 1,
+          arch,
+          trainer,
+          generation,
+          champFitness,
+          weights: Array.from(g),
+        }),
+      ],
+      { type: "application/json" },
+    );
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `neural-snake-champion-${arch}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+
+  document.getElementById("fileLoad").addEventListener("change", (ev) => {
+    const f = ev.target.files && ev.target.files[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(reader.result);
+        if (!data.weights || !data.arch) throw new Error("bad file");
+        document.getElementById("arch").value = data.arch;
+        arch = data.arch;
+        const arr = new Float32Array(data.weights);
+        if (arr.length !== genomeLength(arch)) throw new Error("length mismatch");
+        champion = arr;
+        champFitness = data.champFitness || champFitness;
+        generation = data.generation || generation;
+        syncPopulationSize();
+        population[0] = cloneGenome(champion);
+        for (let i = 1; i < population.length; i++) population[i] = mutate(champion, 0.25, 0.15);
+        resetShowcaseFromBest();
+        updateHud();
+        drawNetViz();
+      } catch (err) {
+        alert("Could not load genome: " + err.message);
+      }
+    };
+    reader.readAsText(f);
+    ev.target.value = "";
+  });
+
+  syncPopulationSize();
+  for (let i = 0; i < population.length; i++) population[i] = randomGenome(arch);
+  evaluateAll();
+  breedNextGeneration();
+  resetShowcaseFromBest();
+  updateHud();
+  drawChart();
+  drawNetViz();
+  requestAnimationFrame(frame);
+})();
+  </script>
+</body>
+</html>
