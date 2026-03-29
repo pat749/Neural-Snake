@@ -2,7 +2,7 @@
 
 A self-contained Snake game where each snake is controlled by a neural network trained **live** with **population-based evolution** (no backprop). Switch between **feedforward**, **Elman RNN**, and **LSTM** brains, and between **genetic algorithm** (crossover + mutation) and **evolution strategy** (mutation around elites).
 
-**Live demo:** enable GitHub Pages on this repo (see below) — site URL will be `https://<username>.github.io/neural-snake/`.
+**Live demo:** enable GitHub Pages on this repo (see below) — site URL will be `https://pat749.github.io/Neural-Snake/`.
 
 ## Features
 
