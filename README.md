@@ -1,47 +1,45 @@
-# Neural Snake — Neuroevolution in the Browser
+# Neural Snake — Research Lab (Evolution + RL)
 
-A self-contained Snake game where each snake is controlled by a neural network trained **live** with **population-based evolution** (no backprop). Switch between **feedforward**, **Elman RNN**, and **LSTM** brains, and between **genetic algorithm** (crossover + mutation) and **evolution strategy** (mutation around elites).
+A self-contained Snake game in one `index.html`: **neuroevolution** (GA, ES, adaptive ES) and **reinforcement learning** (REINFORCE, A2C, DQN, PPO-style) in the browser. Organic snake rendering, human solo play, and a split-screen **Human vs champion** mode.
 
-**Live demo:** after you enable Pages (below), the site is typically `https://<username>.github.io/<repo-name>/` (for example `https://pat749.github.io/Neural-Snake/`).
+**Live demo (after Pages is enabled):** [https://pat749.github.io/Neural-Snake/](https://pat749.github.io/Neural-Snake/)
 
 ## Features
 
-- **Architectures:** FFNN (24→16→4), Elman RNN (recurrent hidden state), LSTM (gated memory).
-- **Training:** GA with crossover and Gaussian mutation, or (μ,λ) ES with elite parents and mutation-only offspring.
-- **Sensors:** Raycasts (wall / body) in four directions, food bearing, heading, and auxiliary cues — all normalized (no raw grid memorization).
-- **Fitness:** Strong reward for food (`score²`) plus shaping for survival and approaching food.
-- **UI:** Generation stats, best/mean fitness chart, weight heatmap for the current champion, speed / turbo training, save & load champion JSON, human play mode to compare yourself to the best AI.
+- **Evolution:** Genetic algorithm, evolution strategy, **adaptive ES** (1/5-style σ).
+- **RL:** REINFORCE + baseline, **Advantage Actor–Critic (A2C)**, **DQN** (replay + target net), **PPO-style** clipped updates.
+- **Architectures (evolution):** FFNN (24→16→4), Elman RNN, LSTM. **RL** uses a shared MLP **24→32→4**.
+- **Sensors:** Raycasts to wall/body, food bearing, heading — normalized (no raw grid).
+- **UI:** Training curve, weight view, turbo / speed, save/load (genome or RL weights), play modes.
 
 ## Run locally
 
-Open `index.html` in a modern browser, or serve the folder:
+Open `index.html` in a browser, or:
 
 ```bash
 cd neural-snake
 python3 -m http.server 8080
-# visit http://localhost:8080
+# http://localhost:8080
 ```
 
 ## Deploy on GitHub Pages
 
-1. Push this project to the `main` branch of your GitHub repository.
-2. **Required once per repo:** open **Settings → Pages**. Under **Build and deployment**, set **Source** to **GitHub Actions** (not “Deploy from a branch”). Until this is saved, `actions/configure-pages` fails with **“Get Pages site failed” / Not Found** because GitHub has not created a Pages site for the repository yet.
-3. Go to **Actions**, open the failed **Deploy to GitHub Pages** run, and click **Re-run all jobs** (or push an empty commit). The workflow in `.github/workflows/pages.yml` uploads the repo root on every push to `main`.
+1. Push to the `main` branch.
+2. **Once per repo:** **Settings → Pages → Build and deployment → Source:** **GitHub Actions**. If this is not set, `actions/configure-pages` can fail with **Get Pages site failed / Not Found**.
+3. In **Actions**, confirm **Deploy to GitHub Pages** succeeds (or re-run the workflow).
 
-### If the deploy job still fails
+### Deploy still failing?
 
-- Confirm **Settings → Pages → Source** is **GitHub Actions**.
-- Confirm the workflow ran on **`main`** (branch name matches `on.push.branches` in `pages.yml`).
-- For a **private** repository, check [GitHub Docs](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages) for extra permission requirements.
+- **Pages → Source** must be **GitHub Actions**.
+- Workflow must run on **`main`** (see `.github/workflows/pages.yml`).
+- Private repos: see [GitHub Pages + Actions](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages).
 
 ## Project layout
 
 ```
-neural-snake/
-├── index.html          # Single-file app (HTML + CSS + JS)
+├── index.html
 ├── README.md
-└── .github/workflows/
-    └── pages.yml       # GitHub Pages deployment
+└── .github/workflows/pages.yml
 ```
 
 ## License
